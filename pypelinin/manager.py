@@ -14,6 +14,7 @@ class Manager(object):
     #      again in job_queue and announce pending job
     #TODO: validate all received data (types, keys etc.)
     #TODO: handle 'job failed' messages
+    #TODO: some attributes should start with '_'
     def __init__(self, api_host_port, broadcast_host_port, config, logger=None,
                  logger_name='Manager'):
         self.job_queue = Queue()
