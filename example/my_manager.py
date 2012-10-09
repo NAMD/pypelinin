@@ -15,7 +15,7 @@ def main():
     logger.addHandler(handler)
     api_host_port = ('*', 5555)
     broadcast_host_port = ('*', 5556)
-    default_config = {'db': {'data': 'test'}, 'monitoring interval': 60, }
+    default_config = {'store': {'data': 'test'}, 'monitoring interval': 60, }
     manager = Manager(api_host_port, broadcast_host_port, default_config,
                       logger)
     manager.start()
