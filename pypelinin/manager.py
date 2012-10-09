@@ -72,6 +72,7 @@ class Manager(object):
             if command == 'get configuration':
                 self.reply(self.config)
             elif command == 'add job':
+                #TODO: needs to validate a job (have keys worker, data, ...?)
                 message['job id'] = uuid.uuid4().hex
                 del message['command']
                 self.job_queue.put(message)

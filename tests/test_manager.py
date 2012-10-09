@@ -59,7 +59,7 @@ class TestManager(unittest.TestCase):
 
     def test_should_receive_new_job_from_broadcast_when_a_job_is_submitted(self):
         self.api.send_json({'command': 'add job', 'worker': 'x',
-                            'document': 'y'})
+                            'data': 'y'})
         if not self.api.poll(time_to_wait):
             self.fail("Didn't receive 'add job' reply")
         self.api.recv_json()
@@ -76,7 +76,7 @@ class TestManager(unittest.TestCase):
         self.assertEqual(message, default_config)
 
     def test_command_add_job_should_return_a_job_id(self):
-        cmd = {'command': 'add job', 'worker': 'test', 'document': 'eggs'}
+        cmd = {'command': 'add job', 'worker': 'test', 'data': 'eggs'}
         self.api.send_json(cmd)
         if not self.api.poll(time_to_wait):
             self.fail("Didn't receive 'job accepted' from manager")
@@ -94,7 +94,7 @@ class TestManager(unittest.TestCase):
 
     def test_command_get_job_should_return_a_job_after_adding_one(self):
         self.api.send_json({'command': 'add job', 'worker': 'spam',
-                            'document': 'eggs'})
+                            'data': 'eggs'})
         if not self.api.poll(time_to_wait):
             self.fail("Didn't receive 'add job' reply")
         job = self.api.recv_json()
@@ -103,7 +103,7 @@ class TestManager(unittest.TestCase):
             self.fail("Didn't receive job from manager")
         message = self.api.recv_json()
         self.assertEqual(message['worker'], 'spam')
-        self.assertEqual(message['document'], 'eggs')
+        self.assertEqual(message['data'], 'eggs')
         self.assertIn('job id', message)
         self.assertEqual(len(message['job id']), 32)
 
@@ -124,7 +124,7 @@ class TestManager(unittest.TestCase):
 
     def test_finished_job_with_correct_job_id_should_return_good_job(self):
         self.api.send_json({'command': 'add job', 'worker': 'a',
-                            'document': 'b'})
+                            'data': 'b'})
         if not self.api.poll(time_to_wait):
             self.fail("Didn't receive 'add job' reply")
         message = self.api.recv_json()
@@ -139,7 +139,7 @@ class TestManager(unittest.TestCase):
 
     def test_should_receive_job_finished_message_with_job_id_and_duration_when_a_job_finishes(self):
         self.api.send_json({'command': 'add job', 'worker': 'x',
-                            'document': 'y'})
+                            'data': 'y'})
         if not self.api.poll(time_to_wait):
             self.fail("Didn't receive 'add job' reply")
         self.api.recv_json()
