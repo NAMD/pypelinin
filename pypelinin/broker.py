@@ -42,7 +42,7 @@ def worker_wrapper(pipe, workers_module_name):
                     break
                 elif message['command'] == 'execute job':
                     worker_function_name = message['worker']
-                    data = message['data']
+                    data = message['worker_input']
                     try:
                         result = worker_functions[worker_function_name](data)
                     except Exception as e:
@@ -71,13 +71,17 @@ class WorkerPool(object):
     def working(self):
         return [worker.working for worker in self.workers].count(True)
 
-    def start_job(self, job_description, data):
+    def start_job(self, job_info):
+        '''
+        job_info = {'worker': 'name as string', 'worker_input': {...data...},
+                    'data': {...data...}}
+        '''
         for worker in self.workers:
             if not worker.working:
                 break
         else:
             return False
-        return worker.start_job(job_description, data)
+        return worker.start_job(job_info)
 
     def end_processes(self):
         for worker in self.workers:
@@ -108,14 +112,14 @@ class Worker(object):
         self.working = False
         self.job_info = None
 
-    def start_job(self, job_description, data):
+    def start_job(self, job_info):
         if self.working:
             return False
         message = {'command': 'execute job',
-                   'worker': job_description['worker'],
-                   'data': data,}
+                   'worker': job_info['worker'],
+                   'worker_input': job_info['worker_input'],}
         self.parent_connection.send(message)
-        self.job_info = job_description
+        self.job_info = job_info
         self.job_info['start time'] = time()
         self.working = True
         return True
@@ -160,6 +164,9 @@ class Broker(Client):
         self.workers = workers
         self.workers_module = import_module(workers)
         self.available_workers = self.workers_module.__all__
+        self.worker_function = {}
+        for worker in self.available_workers:
+            self.worker_function[worker] = getattr(self.workers_module, worker)
         self.worker_pool = WorkerPool(self.number_of_workers, self.workers)
         self.logger.info('Broker started')
 
@@ -222,12 +229,19 @@ class Broker(Client):
             self.disconnect()
 
     def start_job(self, job_description):
-        #info = getattr(self.workers[job_description['worker']], '__meta__', {})
-        info = {}
-        info.update(job_description)
-        data = self._store.retrieve(info)
-        self.worker_pool.start_job(job_description, data)
-        self.logger.debug('Started job "{}" for document "{}"'\
+        worker_meta = getattr(self.worker_function[job_description['worker']],
+                              '__meta__', {})
+        info = {'worker': job_description['worker'],
+                'worker_meta': worker_meta,
+                'data': job_description['data']}
+        worker_input = self._store.retrieve(info)
+        job_info = {'worker': job_description['worker'],
+                    'worker_input': worker_input,
+                    'data': job_description['data'],
+                    'job id': job_description['job id'],
+                    'worker_meta': worker_meta,}
+        self.worker_pool.start_job(job_info)
+        self.logger.debug('Started job: worker="{}", data="{}"'\
                 .format(job_description['worker'], job_description['data']))
 
     def get_a_job(self):
@@ -268,32 +282,31 @@ class Broker(Client):
                 continue
             job_id = worker.job_info['job id']
             job_data = worker.job_info['data']
-            worker_function = worker.job_info['worker']
+            worker_name = worker.job_info['worker']
+            worker_meta = worker.job_info['worker_meta']
             start_time = worker.job_info['start time']
             result = worker.get_result()
             end_time = time()
-            self.logger.info('Job finished: job id={}, worker={}, '
+            self.logger.info('Job finished: id={}, worker={}, '
                              'data={}, start time={}, result={}'.format(job_id,
-                    worker_function, job_data, start_time, result))
+                    worker_name, job_data, start_time, result))
 
-            #worker_info = getattr(self.workers[worker_function], '__meta__',
-            #                      {})
-            worker_info = {}
-            job_data = {
-                    'worker': worker_function,
+            job_information = {
+                    'worker': worker_name,
+                    'worker_meta': worker_meta,
+                    'worker_result': result,
                     'data': job_data,
-                    'result': result,
             }
-            job_data.update(worker_info)
             try:
                 #TODO: what if I want to the caller to receive job information
                 #      as a "return" from a function call? Should use a store?
-                self._store.save(job_data)
+                self._store.save(job_information)
             except ValueError:
                 self.request({'command': 'job failed',
                               'job id': job_id,
                               'duration': end_time - start_time,
                               'message': "Can't save information on store"})
+                #TODO: handle this on Manager
             else:
                 self.request({'command': 'job finished',
                               'job id': job_id,
