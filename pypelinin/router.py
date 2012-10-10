@@ -7,7 +7,7 @@ from logging import Logger, NullHandler
 import zmq
 
 
-class Manager(object):
+class Router(object):
     #TODO: add another queue for processing jobs
     #TODO: add a timeout for processing jobs (default or get it from client)
     #TODO: if processing job have timeout, remove from processing queue, add
@@ -16,7 +16,7 @@ class Manager(object):
     #TODO: handle 'job failed' messages
     #TODO: some attributes should start with '_'
     def __init__(self, api_host_port, broadcast_host_port, config, logger=None,
-                 logger_name='Manager'):
+                 logger_name='Router'):
         self.job_queue = Queue()
         self.pipeline_queue = Queue()
         #TODO: should persist jobs and recover in case of failure

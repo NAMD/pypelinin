@@ -15,13 +15,13 @@ BROADCAST_BIND_ADDRESS = 'tcp://*:5556' # WTF zmq? Why can't I use address above
 class TestClient(unittest.TestCase):
     def setUp(self):
         self.context = Context()
-        self.start_manager_sockets()
+        self.start_router_sockets()
 
     def tearDown(self):
         self.close_sockets()
         self.context.term()
 
-    def start_manager_sockets(self):
+    def start_router_sockets(self):
         self.api = self.context.socket(REP)
         self.broadcast = self.context.socket(PUB)
         self.api.bind(API_BIND_ADDRESS)

@@ -11,10 +11,10 @@ import zmq
 
 time_to_wait = 150
 
-class TestManager(unittest.TestCase):
+class TestRouter(unittest.TestCase):
     def setUp(self):
         self.context = zmq.Context()
-        self.start_manager_process()
+        self.start_router_process()
         self.api = self.context.socket(zmq.REQ)
         self.api.connect('tcp://localhost:5555')
         self.broadcast = self.context.socket(zmq.SUB)
@@ -22,38 +22,38 @@ class TestManager(unittest.TestCase):
         self.broadcast.setsockopt(zmq.SUBSCRIBE, 'new job')
 
     def tearDown(self):
-        self.end_manager_process()
+        self.end_router_process()
         self.close_sockets()
         self.context.term()
 
-    def start_manager_process(self):
-        self.manager = Popen(shlex.split('python ./tests/my_manager.py'),
+    def start_router_process(self):
+        self.router = Popen(shlex.split('python ./tests/my_router.py'),
                              stdin=PIPE, stdout=PIPE, stderr=PIPE)
-        for line in self.manager.stdout.readline():
+        for line in self.router.stdout.readline():
             if 'main loop' in line:
                 break
 
-    def end_manager_process(self):
-        self.manager.send_signal(SIGINT)
+    def end_router_process(self):
+        self.router.send_signal(SIGINT)
         sleep(time_to_wait / 1000.0)
-        self.manager.send_signal(SIGKILL)
-        self.manager.wait()
+        self.router.send_signal(SIGKILL)
+        self.router.wait()
 
     def close_sockets(self):
         self.api.close()
         self.broadcast.close()
 
-    def test_connect_to_manager_api_zmq_socket_and_execute_undefined_command(self):
+    def test_connect_to_router_api_zmq_socket_and_execute_undefined_command(self):
         self.api.send_json({'spam': 'eggs'})
         if not self.api.poll(time_to_wait):
-            self.fail("Didn't receive 'undefined command' from manager")
+            self.fail("Didn't receive 'undefined command' from router")
         message = self.api.recv_json()
         self.assertEqual(message, {'answer': 'undefined command'})
 
-    def test_should_connect_to_manager_api_zmq_socket(self):
+    def test_should_connect_to_router_api_zmq_socket(self):
         self.api.send_json({'command': 'hello'})
         if not self.api.poll(time_to_wait):
-            self.fail("Didn't receive 'unknown command' from manager")
+            self.fail("Didn't receive 'unknown command' from router")
         message = self.api.recv_json()
         self.assertEqual(message, {'answer': 'unknown command'})
 
@@ -71,7 +71,7 @@ class TestManager(unittest.TestCase):
     def test_command_get_configuration_should_return_dict_passed_on_setUp(self):
         self.api.send_json({'command': 'get configuration'})
         if not self.api.poll(time_to_wait):
-            self.fail("Didn't receive configuration from manager")
+            self.fail("Didn't receive configuration from router")
         message = self.api.recv_json()
         self.assertEqual(message, default_config)
 
@@ -79,7 +79,7 @@ class TestManager(unittest.TestCase):
         cmd = {'command': 'add job', 'worker': 'test', 'data': 'eggs'}
         self.api.send_json(cmd)
         if not self.api.poll(time_to_wait):
-            self.fail("Didn't receive 'job accepted' from manager")
+            self.fail("Didn't receive 'job accepted' from router")
         message = self.api.recv_json()
         self.assertEqual(message['answer'], 'job accepted')
         self.assertIn('job id', message)
@@ -88,7 +88,7 @@ class TestManager(unittest.TestCase):
     def test_command_get_job_should_return_empty_if_no_job(self):
         self.api.send_json({'command': 'get job'})
         if not self.api.poll(time_to_wait):
-            self.fail("Didn't receive job (None) from manager")
+            self.fail("Didn't receive job (None) from router")
         message = self.api.recv_json()
         self.assertEqual(message['worker'], None)
 
@@ -100,7 +100,7 @@ class TestManager(unittest.TestCase):
         job = self.api.recv_json()
         self.api.send_json({'command': 'get job'})
         if not self.api.poll(time_to_wait):
-            self.fail("Didn't receive job from manager")
+            self.fail("Didn't receive job from router")
         message = self.api.recv_json()
         self.assertEqual(message['worker'], 'spam')
         self.assertEqual(message['data'], 'eggs')
@@ -110,7 +110,7 @@ class TestManager(unittest.TestCase):
     def test_finished_job_without_job_id_should_return_error(self):
         self.api.send_json({'command': 'job finished'})
         if not self.api.poll(time_to_wait):
-            self.fail("Didn't receive 'syntax error' from manager")
+            self.fail("Didn't receive 'syntax error' from router")
         message = self.api.recv_json()
         self.assertEqual(message['answer'], 'syntax error')
 
@@ -118,7 +118,7 @@ class TestManager(unittest.TestCase):
         self.api.send_json({'command': 'job finished', 'job id': 'python rlz',
                             'duration': 0.1})
         if not self.api.poll(time_to_wait):
-            self.fail("Didn't receive 'unknown job id' from manager")
+            self.fail("Didn't receive 'unknown job id' from router")
         message = self.api.recv_json()
         self.assertEqual(message['answer'], 'unknown job id')
 
@@ -132,7 +132,7 @@ class TestManager(unittest.TestCase):
                             'job id': message['job id'],
                             'duration': 0.1})
         if not self.api.poll(time_to_wait):
-            self.fail("Didn't receive 'good job!' from manager. "
+            self.fail("Didn't receive 'good job!' from router. "
                       "#foreveralone :-(")
         message = self.api.recv_json()
         self.assertEqual(message['answer'], 'good job!')

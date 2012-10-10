@@ -57,7 +57,7 @@ class TestBroker(unittest.TestCase):
 
     def setUp(self):
         self.context = zmq.Context()
-        self.start_manager_sockets()
+        self.start_router_sockets()
         self.start_broker_process()
 
     def tearDown(self):
@@ -100,7 +100,7 @@ class TestBroker(unittest.TestCase):
         for child_pid in children:
             _kill(child_pid, timeout=TIMEOUT / 1000.0)
 
-    def start_manager_sockets(self):
+    def start_router_sockets(self):
         self.api = self.context.socket(zmq.REP)
         self.broadcast = self.context.socket(zmq.PUB)
         self.api.bind('tcp://*:5555')
@@ -167,7 +167,7 @@ class TestBroker(unittest.TestCase):
         job = {'worker': 'Dummy', 'data': {'id': '1'}, 'job id': '2'}
         self.send_and_receive_jobs([job])
 
-    def test_should_send_get_job_just_after_manager_broadcast_new_job(self):
+    def test_should_send_get_job_just_after_router_broadcast_new_job(self):
         self.receive_get_configuration_and_send_it_to_broker()
         self.send_and_receive_jobs([{'worker': None}])
         self.broker_should_be_quiet()

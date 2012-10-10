@@ -3,11 +3,11 @@
 
 from sys import stdout
 from logging import Logger, StreamHandler, Formatter
-from pypelinin import Manager
+from pypelinin import Router
 
 
 def main():
-    logger = Logger('Manager')
+    logger = Logger('Test Router')
     handler = StreamHandler(stdout)
     formatter = Formatter('%(asctime)s - %(name)s - %(levelname)s - '
                           '%(message)s')
@@ -16,9 +16,8 @@ def main():
     api_host_port = ('*', 5555)
     broadcast_host_port = ('*', 5556)
     default_config = {'store': {'data': 'test'}, 'monitoring interval': 60, }
-    manager = Manager(api_host_port, broadcast_host_port, default_config,
-                      logger)
-    manager.start()
+    router = Router(api_host_port, broadcast_host_port, default_config, logger)
+    router.start()
 
 if __name__ == '__main__':
     main()

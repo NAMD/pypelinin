@@ -176,19 +176,19 @@ class Broker(Client):
 
     def request(self, message):
         self.send_api_request(message)
-        self.logger.info('[API] Request to manager: {}'.format(message))
+        self.logger.info('[API] Request to router: {}'.format(message))
 
     def get_reply(self):
         message = self.get_api_reply()
-        self.logger.info('[API] Reply from manager: {}'.format(message))
+        self.logger.info('[API] Reply from router: {}'.format(message))
         return message
 
     def get_configuration(self):
         self.request({'command': 'get configuration'})
         self._config = self.get_reply()
 
-    def connect_to_manager(self):
-        self.logger.info('Trying to connect to manager...')
+    def connect_to_router(self):
+        self.logger.info('Trying to connect to router...')
         self.connect(api=self._api_address, broadcast=self._broadcast_address)
         api_host, api_port = self._api_address.split('//')[1].split(':')
         self.ip = get_outgoing_ip((api_host, int(api_port)))
@@ -220,7 +220,7 @@ class Broker(Client):
     def start(self):
         try:
             self.started_at = time()
-            self.connect_to_manager()
+            self.connect_to_router()
             self.broadcast_subscribe('new job')
             self.get_configuration()
             self._store = self.StoreClass(**self._config['store'])
@@ -254,23 +254,23 @@ class Broker(Client):
         for i in range(self.worker_pool.available()):
             self.request({'command': 'get job'})
             message = self.get_reply()
-            #TODO: if manager stops and doesn't answer, broker will stop here
+            #TODO: if router stops and doesn't answer, broker will stop here
             if 'worker' in message and message['worker'] is None:
                 break # Don't have a job, stop asking
             elif 'worker' in message and 'data' in message:
                 if message['worker'] not in self.available_workers:
                     self.logger.info('Ignoring job (inexistent worker): {}'.format(message))
-                    #TODO: send a 'rejecting job' request to Manager
+                    #TODO: send a 'rejecting job' request to router
                 else:
                     self.start_job(message)
             else:
                 self.logger.info('Ignoring malformed job: {}'.format(message))
-                #TODO: send a 'rejecting job' request to Manager
+                #TODO: send a 'rejecting job' request to router
 
-    def manager_has_job(self):
+    def router_has_job(self):
         if self.broadcast_poll(self.poll_time):
             message = self.broadcast_receive()
-            self.logger.info('[Broadcast] Received from manager: {}'\
+            self.logger.info('[Broadcast] Received from router: {}'\
                              .format(message))
             #TODO: what if broker subscribe to another thing?
             return True
@@ -315,7 +315,7 @@ class Broker(Client):
                               'job id': job_id,
                               'duration': end_time - start_time,
                               'message': "Can't save information on store"})
-                #TODO: handle this on Manager
+                #TODO: handle this on router
             else:
                 self.request({'command': 'job finished',
                               'job id': job_id,
@@ -329,7 +329,7 @@ class Broker(Client):
         while True:
             if self.should_save_monitoring_information_now():
                 self.save_monitoring_information()
-            if not self.full_of_jobs() and self.manager_has_job():
+            if not self.full_of_jobs() and self.router_has_job():
                 self.get_a_job()
             self.check_if_some_job_finished_and_do_what_you_need_to()
 
