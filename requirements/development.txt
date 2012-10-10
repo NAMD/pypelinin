@@ -1,0 +1,5 @@
+--requirement=production.txt
+
+nose
+yanc
+coverage
