@@ -3,6 +3,7 @@ TEST_RUNNER=nosetests -dsv --with-yanc
 clean:
 	find -regex '.*\.pyc' -exec rm {} \;
 	find -regex '.*~' -exec rm {} \;
+	rm -rf build/ reg_settings.py*
 
 bootstrap-environment:
 	pip install -r requirements/development.txt
