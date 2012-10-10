@@ -6,9 +6,8 @@ from multiprocessing import Process, Pipe, cpu_count
 from os import kill, getpid
 from time import sleep, time
 from signal import SIGKILL
-from pypelinin import Client
-from pypelinin.monitoring import (get_host_info, get_outgoing_ip,
-                                  get_process_info)
+from . import Client
+from .monitoring import (get_host_info, get_outgoing_ip, get_process_info)
 
 
 def worker_wrapper(pipe, workers_module_name):
