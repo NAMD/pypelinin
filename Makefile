@@ -1,9 +1,13 @@
 TEST_RUNNER=nosetests -dsv --with-yanc
 
+clean:
+	find -regex '.*\.pyc' -exec rm {} \;
+	find -regex '.*~' -exec rm {} \;
+
 bootstrap-environment:
 	pip install -r requirements/development.txt
 
-bootstrap-tests:
+bootstrap-tests: clean
 	clear
 	python pypelinin/setup.py install
 
@@ -19,4 +23,4 @@ test-client:	bootstrap-tests
 test-broker:	bootstrap-tests
 	${TEST_RUNNER} -x tests/test_broker.py
 
-.PHONY:	bootstrap-environment bootstrap-tests test test-manager test-client test-broker
+.PHONY:	clean bootstrap-environment bootstrap-tests test test-manager test-client test-broker

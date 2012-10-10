@@ -4,7 +4,7 @@ import unittest
 from signal import SIGINT, SIGKILL
 from time import sleep
 from subprocess import Popen, PIPE
-from .utils import default_config
+from utils import default_config
 import shlex
 import zmq
 
@@ -27,7 +27,7 @@ class TestManager(unittest.TestCase):
         self.context.term()
 
     def start_manager_process(self):
-        self.manager = Popen(shlex.split('python ./example/my_manager.py'),
+        self.manager = Popen(shlex.split('python ./tests/my_manager.py'),
                              stdin=PIPE, stdout=PIPE, stderr=PIPE)
         for line in self.manager.stdout.readline():
             if 'main loop' in line:

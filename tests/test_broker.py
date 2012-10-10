@@ -14,7 +14,7 @@ from multiprocessing import cpu_count
 from md5 import md5
 import zmq
 from psutil import Process, NoSuchProcess
-from .utils import default_config
+from utils import default_config
 
 
 TIMEOUT = 1500
@@ -67,7 +67,7 @@ class TestBroker(unittest.TestCase):
 
     def start_broker_process(self):
         #TODO: call process passing a configuration file
-        self.broker = Popen(shlex.split('python ./example/my_broker.py'),
+        self.broker = Popen(shlex.split('python ./tests/my_broker.py'),
                             stdin=PIPE, stdout=PIPE, stderr=PIPE)
         #TODO: use select and self.fail
         for line in self.broker.stdout.readline():
