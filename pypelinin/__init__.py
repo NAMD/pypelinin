@@ -3,5 +3,4 @@
 from .router import Router
 from .client import Client
 from .broker import Broker
-from .worker import Worker
-from .pipeline import Pipeliner#, PipelineManager, Worker
+from .pipeline import Pipeliner, Worker#, PipelineManager
