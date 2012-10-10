@@ -2,7 +2,7 @@
 
 import unittest
 import json
-from pypelinin import Worker, todict
+from pypelinin import Worker
 
 
 class WorkerTest(unittest.TestCase):
@@ -38,12 +38,12 @@ class WorkerTest(unittest.TestCase):
                                     Worker('V3')
                                 ] | Worker('V4')
 
-        jdata = json.dumps(todict(pipeline), indent=4)
+        jdata = json.dumps(pipeline.to_dict(), indent=4)
         pipeline_from_json = Worker.from_json(jdata)
 
         self.assertEqual(pipeline, pipeline_from_json)
         self.assertEqual(pipeline_from_json.after,
                           [[Worker('V2') | Worker('A2'),
                                            Worker('V3')], Worker('V4')])
-        self.assertEqual(json.dumps(todict(pipeline)),
-                          json.dumps(todict(pipeline_from_json)))
+        self.assertEqual(json.dumps(pipeline.to_dict()),
+                          json.dumps(pipeline_from_json.to_dict()))

@@ -3,5 +3,5 @@
 from .router import Router
 from .client import Client
 from .broker import Broker
-from .worker import Worker, todict
+from .worker import Worker
 from .pipeline import Pipeliner#, PipelineManager, Worker

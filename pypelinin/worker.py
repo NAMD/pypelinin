@@ -2,16 +2,15 @@
 
 import json
 
-
-def todict(obj, classkey=None):
+def _to_dict(obj, classkey=None):
     if isinstance(obj, dict):
         for k in obj.keys():
-            obj[k] = todict(obj[k], classkey)
+            obj[k] = _to_dict(obj[k], classkey)
         return obj
     elif hasattr(obj, "__iter__"):
-        return [todict(v, classkey) for v in obj]
+        return [_to_dict(v, classkey) for v in obj]
     elif hasattr(obj, "__dict__"):
-        data = dict([(key, todict(value, classkey))
+        data = dict([(key, _to_dict(value, classkey))
             for key, value in obj.__dict__.iteritems()
             if not callable(value) and not key.startswith('_')])
         if classkey is not None and hasattr(obj, "__class__"):
@@ -65,3 +64,6 @@ class Worker(object):
 
         worker.after = temp_after
         return worker
+
+    def to_dict(self, classkey=None):
+        return _to_dict(self, classkey)
