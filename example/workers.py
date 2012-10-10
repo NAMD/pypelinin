@@ -1,18 +1,32 @@
 # coding: utf-8
 
-__all__ = ['dummy', 'echo', 'snorlax']
+
+import time
+
+__all__ = ['Dummy', 'Echo', 'Upper', 'Snorlax']
 
 
-def dummy(document):
-    return {}
-dummy.__meta__ = {}
+class Dummy(object):
+    requires = []
 
-def echo(document):
-    return {'key-c': document['key-a'], 'key-d': document['key-b']}
-echo.__meta__ = {}
+    def process(self, data):
+        return {}
 
-def snorlax(document):
-    import time
-    time.sleep(document['sleep-for'])
-    return {}
-snorlax.__meta__ = {}
+class Echo(object):
+    requires = ['key-a', 'key-b']
+
+    def process(self, data):
+        return {'key-c': data['key-a'], 'key-d': data['key-b']}
+
+class Upper(object):
+    requires = ['text']
+
+    def process(self, data):
+        return {'upper_text': data['text'].upper()}
+
+class Snorlax(object):
+    requires = ['sleep-for']
+
+    def process(self, data):
+        time.sleep(data['sleep-for'])
+        return {}

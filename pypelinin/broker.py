@@ -31,20 +31,19 @@ def worker_wrapper(pipe, workers_module_name):
         pipe.send({'command': 'error'})
         #TODO: handle this on broker
     else:
-        worker_functions = {}
-        for worker_function_name in workers_module.__all__:
-            worker_functions[worker_function_name] = getattr(workers_module,
-                    worker_function_name)
+        workers = {}
+        for worker in workers_module.__all__:
+            workers[worker] = getattr(workers_module, worker)()
         try:
             while True:
                 message = pipe.recv()
                 if message['command'] == 'exit':
                     break
                 elif message['command'] == 'execute job':
-                    worker_function_name = message['worker']
+                    worker_name = message['worker']
                     data = message['worker_input']
                     try:
-                        result = worker_functions[worker_function_name](data)
+                        result = workers[worker_name].process(data)
                     except Exception as e:
                         result = {'_error': True, '_exception': e}
                         #TODO: handle this on broker
@@ -164,9 +163,14 @@ class Broker(Client):
         self.workers = workers
         self.workers_module = import_module(workers)
         self.available_workers = self.workers_module.__all__
-        self.worker_function = {}
+        self.worker_requirements = {}
         for worker in self.available_workers:
-            self.worker_function[worker] = getattr(self.workers_module, worker)
+            try:
+                WorkerClass = getattr(self.workers_module, worker)
+            except AttributeError:
+                raise RuntimeError("Could not find worker '{}'".format(worker))
+            self.worker_requirements[worker] = getattr(WorkerClass, 'requires',
+                                                       [])
         self.worker_pool = WorkerPool(self.number_of_workers, self.workers)
         self.logger.info('Broker started')
 
@@ -229,20 +233,21 @@ class Broker(Client):
             self.disconnect()
 
     def start_job(self, job_description):
-        worker_meta = getattr(self.worker_function[job_description['worker']],
-                              '__meta__', {})
-        info = {'worker': job_description['worker'],
-                'worker_meta': worker_meta,
+        worker = job_description['worker']
+        worker_requires = self.worker_requirements[worker]
+        info = {'worker': worker,
+                'worker_requires': worker_requires,
                 'data': job_description['data']}
+        #TODO: handle if retrieve raises exception
         worker_input = self._store.retrieve(info)
-        job_info = {'worker': job_description['worker'],
+        job_info = {'worker': worker,
                     'worker_input': worker_input,
                     'data': job_description['data'],
                     'job id': job_description['job id'],
-                    'worker_meta': worker_meta,}
+                    'worker_requires': worker_requires,}
         self.worker_pool.start_job(job_info)
         self.logger.debug('Started job: worker="{}", data="{}"'\
-                .format(job_description['worker'], job_description['data']))
+                .format(worker, job_description['data']))
 
     def get_a_job(self):
         self.logger.debug('Available workers: {}'.format(self.worker_pool.available()))
@@ -252,9 +257,12 @@ class Broker(Client):
             #TODO: if manager stops and doesn't answer, broker will stop here
             if 'worker' in message and message['worker'] is None:
                 break # Don't have a job, stop asking
-            elif 'worker' in message and 'data' in message and \
-                    message['worker'] in self.available_workers:
-                self.start_job(message)
+            elif 'worker' in message and 'data' in message:
+                if message['worker'] not in self.available_workers:
+                    self.logger.info('Ignoring job (inexistent worker): {}'.format(message))
+                    #TODO: send a 'rejecting job' request to Manager
+                else:
+                    self.start_job(message)
             else:
                 self.logger.info('Ignoring malformed job: {}'.format(message))
                 #TODO: send a 'rejecting job' request to Manager
@@ -283,7 +291,7 @@ class Broker(Client):
             job_id = worker.job_info['job id']
             job_data = worker.job_info['data']
             worker_name = worker.job_info['worker']
-            worker_meta = worker.job_info['worker_meta']
+            worker_requires = worker.job_info['worker_requires']
             start_time = worker.job_info['start time']
             result = worker.get_result()
             end_time = time()
@@ -293,13 +301,14 @@ class Broker(Client):
 
             job_information = {
                     'worker': worker_name,
-                    'worker_meta': worker_meta,
+                    'worker_requires': worker_requires,
                     'worker_result': result,
                     'data': job_data,
             }
             try:
                 #TODO: what if I want to the caller to receive job information
                 #      as a "return" from a function call? Should use a store?
+                #TODO: handle if retrieve raises exception
                 self._store.save(job_information)
             except ValueError:
                 self.request({'command': 'job failed',

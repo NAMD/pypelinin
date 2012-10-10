@@ -1,10 +1,12 @@
 # coding: utf-8
 
 from __future__ import print_function
+import json
+import os
 import unittest
 import shlex
 import select
-import json
+import tempfile
 from signal import SIGINT, SIGKILL
 from time import sleep, time
 from subprocess import Popen, PIPE
@@ -121,7 +123,7 @@ class TestBroker(unittest.TestCase):
             self.fail("Didn't receive 'get job' from broker")
         message = self.api.recv_json()
         if job is None:
-            job = {'worker': 'dummy', 'data': {'id': '1'}, 'job id': '2'}
+            job = {'worker': 'Dummy', 'data': {'id': '1'}, 'job id': '2'}
         self.api.send_json(job)
         self.assertEqual(message, {'command': 'get job'})
 
@@ -162,7 +164,7 @@ class TestBroker(unittest.TestCase):
 
     def test_should_ask_for_a_job_after_configuration(self):
         self.receive_get_configuration_and_send_it_to_broker()
-        job = {'worker': 'dummy', 'data': {'id': '1'}, 'job id': '2'}
+        job = {'worker': 'Dummy', 'data': {'id': '1'}, 'job id': '2'}
         self.send_and_receive_jobs([job])
 
     def test_should_send_get_job_just_after_manager_broadcast_new_job(self):
@@ -175,7 +177,7 @@ class TestBroker(unittest.TestCase):
     def test_should_send_finished_job_when_asked_to_run_dummy_worker(self):
         jobs = []
         for i in range(self.cpus):
-            jobs.append({'worker': 'dummy', 'data': {'id': 'xpto'},
+            jobs.append({'worker': 'Dummy', 'data': {'id': 'xpto'},
                          'job id': i})
         self.receive_get_configuration_and_send_it_to_broker()
         messages = self.send_and_receive_jobs(jobs, wait_finished_job=True)
@@ -216,7 +218,7 @@ class TestBroker(unittest.TestCase):
         broker_pid = self.broker.pid
         children_pid_before = [process.pid for process in \
                                Process(broker_pid).get_children()]
-        job = {'worker': 'dummy', 'data': {'data': {}},}
+        job = {'worker': 'Dummy', 'data': {'data': {}},}
         jobs = [job] * self.cpus
         self.send_and_receive_jobs(jobs, wait_finished_job=True)
         children_pid_after = [process.pid for process in \
@@ -230,7 +232,7 @@ class TestBroker(unittest.TestCase):
 
     def test_should_return_time_spent_by_each_job(self):
         sleep_time = 1.43
-        job = {'worker': 'snorlax', 'data': {'sleep-for': sleep_time},}
+        job = {'worker': 'Snorlax', 'data': {'sleep-for': sleep_time},}
         jobs = [job] * self.cpus
         self.receive_get_configuration_and_send_it_to_broker()
         start_time = time()
@@ -312,7 +314,7 @@ class TestBroker(unittest.TestCase):
         jobs = []
         start_time = time()
         for i in range(self.cpus):
-            jobs.append({'worker': 'snorlax', 'data': {'sleep-for': 100,
+            jobs.append({'worker': 'Snorlax', 'data': {'sleep-for': 100,
                                                        'data': {'id': 143}}})
         self.send_and_receive_jobs(jobs)
         end_time = time()
@@ -340,7 +342,23 @@ class TestBroker(unittest.TestCase):
             self.assertTrue(start_time - 3 < process['started at'] < \
                     end_time + 3)
             self.assertEqual(process['type'], 'worker')
-            self.assertEqual(process['worker'], 'snorlax')
+            self.assertEqual(process['worker'], 'Snorlax')
 
-    #TODO: test usage of store methods
-    #TODO: test __meta__
+    def test_if_broker_calls_save_and_retrieve_methods_from_store(self):
+        input_file = tempfile.NamedTemporaryFile(delete=False)
+        input_file.write('Answer: 42.')
+        input_file.close()
+        self.receive_get_configuration_and_send_it_to_broker()
+        jobs = [{'worker': 'Upper', 'data': {'filename': input_file.name}}]
+        messages = self.send_and_receive_jobs(jobs, wait_finished_job=True)
+        result_filename = input_file.name + '.result'
+        requires_filename = input_file.name + '.requires'
+        with open(result_filename, 'r') as fp:
+            contents = fp.read()
+        self.assertEqual(contents, 'ANSWER: 42.')
+        with open(requires_filename, 'r') as fp:
+            contents = fp.read()
+        self.assertEqual(contents, "['text']")
+        os.unlink(input_file.name)
+        os.unlink(result_filename)
+        os.unlink(requires_filename)
