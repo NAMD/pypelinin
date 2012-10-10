@@ -24,4 +24,7 @@ test-client:	bootstrap-tests
 test-broker:	bootstrap-tests
 	${TEST_RUNNER} -x tests/test_broker.py
 
-.PHONY:	clean bootstrap-environment bootstrap-tests test test-router test-client test-broker
+test-pipeline:	bootstrap-tests
+	${TEST_RUNNER} -x tests/test_worker.py
+
+.PHONY:	clean bootstrap-environment bootstrap-tests test test-router test-client test-broker test-pipeline

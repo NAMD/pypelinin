@@ -2,7 +2,7 @@
 
 import unittest
 import json
-from . import Worker, todict
+from pypelinin import Worker, todict
 
 
 class WorkerTest(unittest.TestCase):
