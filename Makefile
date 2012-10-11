@@ -10,7 +10,7 @@ bootstrap-environment:
 
 bootstrap-tests: clean
 	clear
-	python pypelinin/setup.py install
+	python setup.py install
 
 test:	bootstrap-tests
 	${TEST_RUNNER} tests/
