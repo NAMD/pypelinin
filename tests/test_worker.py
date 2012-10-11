@@ -1,7 +1,6 @@
 # coding: utf-8
 
 import unittest
-import json
 from pypelinin import Worker
 
 
@@ -11,7 +10,7 @@ class WorkerTest(unittest.TestCase):
 
         self.assertEqual(pipeline.name, 'worker_id')
         self.assertEqual(pipeline.after, [])
-        self.assertEqual(pipeline.serialize(), "worker: worker_id")
+        self.assertEqual(repr(pipeline), "Worker('worker_id')")
 
     def test_pipeline_worker_pipe_pipeline(self):
         pipeline = Worker('w1') | Worker('w2')
@@ -33,17 +32,17 @@ class WorkerTest(unittest.TestCase):
                           [[Worker('V2') | Worker('A2'),
                                            Worker('V3')], Worker('V4')])
 
-    def test_complex_pipeline_to_json_and_from_json(self):
+    def test_complex_pipeline_to_dict_and_from_dict(self):
         pipeline = Worker('V1') | [ Worker('V2') | Worker('A2'),
                                     Worker('V3')
                                 ] | Worker('V4')
 
-        jdata = json.dumps(pipeline.to_dict(), indent=4)
-        pipeline_from_json = Worker.from_json(jdata)
+        serialized = pipeline.to_dict()
+        pipeline_from_dict = Worker.from_dict(serialized)
 
-        self.assertEqual(pipeline, pipeline_from_json)
-        self.assertEqual(pipeline_from_json.after,
+        self.assertEqual(pipeline, pipeline_from_dict)
+        self.assertEqual(pipeline_from_dict.after,
                           [[Worker('V2') | Worker('A2'),
                                            Worker('V3')], Worker('V4')])
-        self.assertEqual(json.dumps(pipeline.to_dict()),
-                          json.dumps(pipeline_from_json.to_dict()))
+        self.assertEqual(pipeline.to_dict(),
+                         pipeline_from_dict.to_dict())

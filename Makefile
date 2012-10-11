@@ -16,7 +16,7 @@ test:	bootstrap-tests
 	${TEST_RUNNER} tests/
 
 test-router:	bootstrap-tests
-	${TEST_RUNNER} tests/test_router.py
+	${TEST_RUNNER} -x tests/test_router.py
 
 test-client:	bootstrap-tests
 	${TEST_RUNNER} --with-coverage --cover-package=pypelinin.client tests/test_client.py
@@ -25,6 +25,6 @@ test-broker:	bootstrap-tests
 	${TEST_RUNNER} -x tests/test_broker.py
 
 test-pipeline:	bootstrap-tests
-	${TEST_RUNNER} -x tests/test_worker.py
+	${TEST_RUNNER} --with-coverage --cover-package=pypelinin.pipeline tests/test_worker.py
 
 .PHONY:	clean bootstrap-environment bootstrap-tests test test-router test-client test-broker test-pipeline
