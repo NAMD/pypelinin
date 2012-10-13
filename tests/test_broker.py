@@ -11,7 +11,7 @@ from signal import SIGINT, SIGKILL
 from time import sleep, time
 from subprocess import Popen, PIPE
 from multiprocessing import cpu_count
-from md5 import md5
+from uuid import uuid4
 import zmq
 from psutil import Process, NoSuchProcess
 from utils import default_config
@@ -148,7 +148,7 @@ class TestBroker(unittest.TestCase):
                 else:
                     job = {'worker': None}
                 if 'job id' not in job:
-                    job['job id'] = md5().hexdigest()
+                    job['job id'] = uuid4().hex
                 self.api.send_json(job)
             elif msg['command'] == 'job finished':
                 self.api.send_json({'answer': 'good job!'})

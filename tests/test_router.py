@@ -9,6 +9,7 @@ import shlex
 import zmq
 
 
+#TODO: validate pipeline data when requested
 time_to_wait = 150
 
 class TestRouter(unittest.TestCase):
