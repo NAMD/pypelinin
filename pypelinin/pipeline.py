@@ -1,174 +1,63 @@
-#!/usr/bin/env python
 # coding: utf-8
 
-#TODO: in future, pipeliner could be a worker in a broker tagged as pipeliner,
-#      but router needs to support broker tags
+class Pipeline(object):
+    '''Representation of a series of parallel workers
 
-from uuid import uuid4
-from . import Client
+    A `Pipeline` is basically a list of workers that will execute in parallel.
+    For example:
+        >>> my_pipeline = Pipeline('w1', 'w2')
 
-
-def _to_dict(obj, classkey=None):
-    if hasattr(obj, "__iter__"):
-        return [_to_dict(v, classkey) for v in obj]
-    elif hasattr(obj, "__dict__"):
-        data = dict([(key, _to_dict(value, classkey))
-            for key, value in obj.__dict__.iteritems()
-            if not callable(value) and not key.startswith('_')])
-        if classkey is not None and hasattr(obj, "__class__"):
-            data[classkey] = obj.__class__.__name__
-        return data
-    else:
-        return obj
-
-class Worker(object):
-    def __init__(self, worker_name):
-        self.name = worker_name
-        self.after = []
-
-    def  __or__(self, *after):
-        self.after.extend(after)
-        return self
-
-    def __eq__(self, other):
-        return self.name == other.name
+    This represents that worker 'w1' will run in parallel to worker 'w2'.
+    You can combine pipelines using the `|` operator, as follows:
+        my_pipeline = Pipeline('s1') | Pipeline('s2')
+    In the example above, worker 's1' will be executed and then, sequentially,
+    's2'.
+    The `|` operation returns a new `Pipeline` object, so you can combine your
+    pipeline objects easily as:
+        >>> p1 = Pipeline('w1.1', 'w1.2')
+        >>> p2 = Pipeline('s2.1') | Pipeline('s2.2')
+        >>> p3 = p1 | p2
+        >>> print repr(p3)
+        Pipeline('w1.1', 'w1.2') | Pipeline('s2.1') | Pipeline('s2.2')
+    '''
+    def __init__(self, *workers):
+        self._workers = []
+        for worker in workers:
+            self._workers.append(worker)
+        self._after = None
 
     def __repr__(self):
-        return "Worker({})".format(repr(self.name))
+        workers_representation = [repr(w) for w in self._workers]
+        if self._after is None:
+            return 'Pipeline({})'.format(', '.join(workers_representation))
+        else:
+            workers = ', '.join(workers_representation)
+            return 'Pipeline({}) | {}'.format(workers, repr(self._after))
+
+    def __or__(self, other):
+        if type(self) != type(other):
+            raise TypeError('You can only use "|" between Pipeline objects')
+        p = Pipeline(*self._workers)
+        if self._after is None:
+            p._after = other
+        else:
+            p._after = self._after | other
+        return p
+
+    def __eq__(self, other):
+        return type(self) == type(other) and \
+               self._workers == other._workers and \
+               self._after == other._after
+
+    def to_dict(self):
+        after = None
+        if self._after is not None:
+            after = self._after.to_dict()
+        return {'workers': self._workers, 'after': after}
 
     @staticmethod
     def from_dict(data):
-        temp_after = []
-
-        if isinstance(data, list):
-            for node in data:
-                temp_after.append(Worker.from_dict(node))
-            return temp_after
-        else:
-            worker = Worker(data['name'])
-            if data['after']:
-                temp_after = Worker.from_dict(data['after'])
-            worker.after = temp_after
-            return worker
-
-    def to_dict(self, classkey=None):
-        return _to_dict(self, classkey)
-
-class Pipeliner(Client):
-    #TODO: should send monitoring information?
-    #TODO: should receive and handle a 'job error' from router when some job
-    #      could not be processed (timeout, worker not found etc.)
-
-    def __init__(self, api_host_port, broadcast_host_port, logger=None,
-                 poll_time=50):
-        super(Pipeliner, self).__init__()
-        self.api_host_port = api_host_port
-        self.broadcast_host_port = broadcast_host_port
-        self.logger = logger
-        self.poll_time = poll_time
-        self._new_pipelines = 0
-        self._messages = []
-        self._pipelines = {}
-        self._jobs = {}
-        self.logger.info('Pipeliner started')
-
-    def start(self):
-        try:
-            self.connect(self.api_host_port, self.broadcast_host_port)
-            self.broadcast_subscribe('new pipeline')
-            self.run()
-        except KeyboardInterrupt:
-            self.logger.info('Got SIGNINT (KeyboardInterrupt), exiting.')
-            self.close_sockets()
-
-    def _update_broadcast(self):
-        if self.broadcast_poll(self.poll_time):
-            message = self.broadcast_receive()
-            self.logger.info('Received from broadcast: {}'.format(message))
-            if message.startswith('new pipeline'):
-                self._new_pipelines += 1
-            else:
-                self._messages.append(message)
-
-    def router_has_new_pipeline(self):
-        self._update_broadcast()
-        return self._new_pipelines > 0
-
-    def ask_for_a_pipeline(self):
-        self.send_api_request({'command': 'get pipeline'})
-        message = self.get_api_reply()
-        #TODO: if router stops and doesn't answer, pipeliner will stop here
-        if 'data' in message:
-            if message['data'] is not None:
-                self.logger.info('Got this pipeline: {}'.format(message))
-                self._new_pipelines -= 1
-                return message
-        elif 'pipeline' in message and message['pipeline'] is None:
-            self.logger.info('Bad bad router, no pipeline for me.')
-            return None
-        else:
-            self.logger.info('Ignoring malformed pipeline: {}'.format(message))
-            #TODO: send a 'rejecting pipeline' request to router
-            return None
-
-    def get_a_pipeline(self):
-        data = self.ask_for_a_pipeline()
-        if data is not None:
-            self.start_pipeline(data)
-
-    def _send_job(self, worker):
-        job = {'command': 'add job', 'worker': worker.name,
-               'data': worker.data}
-        self.logger.info('Sending new job: {}'.format(job))
-        self.send_api_request(job)
-        self.logger.info('Sent job: {}'.format(job))
-        message = self.get_api_reply()
-        self.logger.info('Received from router API: {}'.format(message))
-        self._jobs[message['job id']] = worker
-        subscribe_message = 'job finished: {}'.format(message['job id'])
-        self.broadcast_subscribe(subscribe_message)
-        self.logger.info('Subscribed on router Broadcast to: {}'\
-                         .format(subscribe_message))
-
-    def start_pipeline(self, data):
-        pipeline_id = data['pipeline id']
-        workers = Worker('downloader')
-        workers.pipeline = pipeline_id
-        workers.data = data['data']
-        self._pipelines[pipeline_id] = [workers]
-        self._send_job(workers)
-
-    def verify_jobs(self):
-        self._update_broadcast()
-        new_messages = []
-        for message in self._messages:
-            if message.startswith('job finished: '):
-                job_id = message.split(': ')[1].split(' ')[0]
-                self.logger.info('Processing finished job id {}.'.format(job_id))
-                worker = self._jobs[job_id]
-                self._pipelines[worker.pipeline].remove(worker)
-                for next_worker in worker.after:
-                    next_worker.data = worker.data
-                    next_worker.pipeline = worker.pipeline
-                    self._pipelines[worker.pipeline].append(next_worker)
-                    self._send_job(next_worker)
-                del self._jobs[job_id]
-                if not self._pipelines[worker.pipeline]:
-                    self.send_api_request({'command': 'pipeline finished',
-                                           'pipeline id': worker.pipeline})
-                    self.get_api_reply()
-                    #TODO: check reply
-                    del self._pipelines[worker.pipeline]
-                    self.logger.info('Finished pipeline {}'\
-                                     .format(worker.pipeline))
-                    self.get_a_pipeline()
-                self.broadcast_unsubscribe(message)
-        self._messages = []
-
-    def run(self):
-        self.logger.info('Entering main loop')
-        self.get_a_pipeline()
-        while True:
-            if self.router_has_new_pipeline():
-                self.get_a_pipeline()
-            self.verify_jobs()
+        p = Pipeline(*data['workers'])
+        if data['after'] is not None:
+            p = p | Pipeline.from_dict(data['after'])
+        return p
