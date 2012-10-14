@@ -1,103 +1,134 @@
 # coding: utf-8
 
 import unittest
-from pypelinin import Pipeline
+from textwrap import dedent
+from pypelinin import Job, Pipeline
 
 
-class PipelineTest(unittest.TestCase):
-    def test_pipeline_init(self):
-        pipeline = Pipeline('worker_name')
+class GraphTest(unittest.TestCase):
+    def test_jobs(self):
+        result = Pipeline({Job('A'): [Job('B')],
+                           Job('B'): [Job('C'), Job('D'), Job('E')],
+                           Job('Z'): [Job('W')],
+                           Job('W'): Job('A')}).jobs
+        expected = (Job('A'), Job('B'), Job('C'), Job('D'), Job('E'), Job('W'),
+                    Job('Z'))
+        self.assertEqual(set(result), set(expected))
 
-        self.assertEqual(pipeline._workers, ['worker_name'])
-        self.assertEqual(pipeline._after, None)
-        self.assertEqual(repr(pipeline), "Pipeline('worker_name')")
+    def test_get_starters(self):
+        result = Pipeline({Job('A'): []}).starters
+        expected = (Job('A'),)
+        self.assertEqual(set(result), set(expected))
 
-    def test_pipeline_with_more_than_one_worker(self):
-        pipeline = Pipeline('worker_1', 'worker_2', 'worker_3')
+        result = Pipeline({Job('A'): [], Job('B'): []}).starters
+        expected = (Job('A'), Job('B'))
+        self.assertEqual(set(result), set(expected))
 
-        self.assertEqual(pipeline._workers, ['worker_1', 'worker_2',
-                                             'worker_3'])
-        self.assertEqual(pipeline._after, None)
-        expected = "Pipeline('worker_1', 'worker_2', 'worker_3')"
-        self.assertEqual(repr(pipeline), expected)
+        result = Pipeline({Job('A'): [Job('B')], Job('B'): []}).starters
+        expected = (Job('A'),)
+        self.assertEqual(set(result), set(expected))
 
-    def test_pipelines_with_same_workers_should_be_equal(self):
-        p1 = Pipeline('w1')
-        p2 = Pipeline('w1')
-        self.assertEqual(p1, p2)
-        p3 = Pipeline('w1', 'w2')
-        p4 = Pipeline('w1', 'w2')
-        self.assertEqual(p3, p4)
+        result = Pipeline({Job('A'): [Job('B')],
+                           Job('B'): [Job('C'), Job('D'), Job('E')],
+                           Job('Z'): [Job('W')]}).starters
+        expected = (Job('A'), Job('Z'))
+        self.assertEqual(set(result), set(expected))
 
-    def test_pipeline_after(self):
-        pipeline = Pipeline('w1') | Pipeline('w2')
+        result = Pipeline({('A', 'B', 'C'): ['D']}).starters
+        expected = ['A', 'B', 'C']
+        self.assertEqual(set(result), set(expected))
 
-        self.assertEqual(pipeline._workers, ['w1'])
-        self.assertEqual(pipeline._after, Pipeline('w2'))
+        result = Pipeline({(Job('A'), Job('B'), Job('C')): [Job('D')],
+                           Job('E'): (Job('B'), Job('F'))}).starters
+        expected = (Job('A'), Job('C'), Job('E'))
+        self.assertEqual(set(result), set(expected))
 
-    def test_pipeline_after_should_not_change_current_object(self):
-        p1 = Pipeline('w1')
-        p2 = Pipeline('w2')
-        p3 = Pipeline('w3.1', 'w3.2')
-        p4 = p1 | p2 | p3
-        self.assertEqual(p1, Pipeline('w1'))
-        self.assertEqual(p2, Pipeline('w2'))
-        self.assertEqual(p3, Pipeline('w3.1', 'w3.2'))
-        self.assertEqual(p4, p1 | p2 | p3)
+    def test_normalize(self):
+        result = Pipeline({Job('A'): Job('B')})._graph
+        expected = [(Job('A'), Job('B'))]
+        self.assertEqual(set(result), set(expected))
 
-    def test_pipeline_after_repr(self):
-        self.assertEqual(repr(Pipeline('w1') | Pipeline('w2')),
-                         "Pipeline('w1') | Pipeline('w2')")
-        self.assertEqual(repr(Pipeline('w1') | Pipeline('w2') | Pipeline('w3')),
-                         "Pipeline('w1') | Pipeline('w2') | Pipeline('w3')")
+        result = Pipeline({Job('A'): [Job('B')]})._graph
+        expected = [(Job('A'), Job('B'))]
+        self.assertEqual(set(result), set(expected))
 
-    def test_after_should_raise_TypeError_if_right_object_is_not_Pipeline(self):
-        with self.assertRaises(TypeError):
-            Pipeline('w1') | 42
-        with self.assertRaises(TypeError):
-            Pipeline('w1') | 'answer'
-        with self.assertRaises(TypeError):
-            Pipeline('w1') | 3.14
-        with self.assertRaises(TypeError):
-            Pipeline('w1') | Exception
-        with self.assertRaises(TypeError):
-            Pipeline('w1') | Pipeline # class, not instance
+        result = Pipeline({(Job('A'),): (Job('B'),)})._graph
+        expected = [(Job('A'), Job('B'))]
+        self.assertEqual(set(result), set(expected))
 
-    def test_pipelines_with_same_workers_and_after_should_be_equal(self):
-        self.assertNotEqual(Pipeline('w1') | Pipeline('w2'), Pipeline('w1'))
-        self.assertNotEqual(Pipeline('w1') | Pipeline('w2'), Pipeline('w2'))
-        self.assertEqual(Pipeline('w1') | Pipeline('w2'),
-                         Pipeline('w1') | Pipeline('w2'))
+        result = Pipeline({(Job('A'), Job('C')): Job('B')})._graph
+        expected = [(Job('A'), Job('B')), (Job('C'), Job('B'))]
+        self.assertEqual(set(result), set(expected))
 
-    def test_pipeline_to_dict_should_serialize_it(self):
-        self.assertEqual(Pipeline('w1').to_dict(), {'workers': ['w1'],
-                                                    'after': None})
-        self.assertEqual(Pipeline('w1', 'w2', 'w3').to_dict(),
-                         {'workers': ['w1', 'w2', 'w3'], 'after': None})
+        result = Pipeline({('A', 'C'): ['B', 'D', 'E']})._graph
+        expected = [('A', 'B'), ('A', 'D'), ('A', 'E'), ('C', 'B'), ('C', 'D'),
+                    ('C', 'E')]
+        self.assertEqual(set(result), set(expected))
 
-        p2 = Pipeline('w1') | Pipeline('w2')
-        self.assertEqual(p2.to_dict(), {'workers': ['w1'],
-                                        'after': {'workers': ['w2'],
-                                                  'after': None}})
-        p3 = Pipeline('a', 'b') | Pipeline('c', 'd') | Pipeline('e', 'f', 'g')
-        p3_3 = {'workers': ['e', 'f', 'g'], 'after': None}
-        p3_2 = {'workers': ['c', 'd'], 'after': p3_3}
-        p3_1 = {'workers': ['a', 'b'], 'after': p3_2}
-        self.assertEqual(p3.to_dict(), p3_1)
+        result = Pipeline({Job('ABC'): []})._graph # problem here if use string
+        expected = [(Job('ABC'), None)]
+        self.assertEqual(set(result), set(expected))
 
-    def test_pipeline_from_dict_should_deserialize_it(self):
-        d1 = {'workers': ['w1'], 'after': None}
-        self.assertEqual(Pipeline.from_dict(d1), Pipeline('w1'))
+        result = Pipeline({Job('A'): [], Job('B'): []})._graph
+        expected = [(Job('A'), None), (Job('B'), None)]
+        self.assertEqual(set(result), set(expected))
 
-        d2 = {'workers': ['w1', 'w2', 'w3'], 'after': None}
-        self.assertEqual(Pipeline.from_dict(d2), Pipeline('w1', 'w2', 'w3'))
+        result = Pipeline({Job('A'): [Job('B')], Job('B'): []})._graph
+        expected = [(Job('A'), Job('B')), (Job('B'), None)]
+        self.assertEqual(set(result), set(expected))
 
-        d3 = {'workers': ['w1'], 'after': {'workers': ['w2'], 'after': None}}
-        self.assertEqual(Pipeline.from_dict(d3),
-                         Pipeline('w1') | Pipeline('w2'))
+        result = Pipeline({Job('QWE'): [Job('B')],
+                           Job('B'): [Job('C'), Job('D'), Job('E')],
+                           Job('Z'): [Job('W')]})._graph
+        expected = [(Job('QWE'), Job('B')), (Job('B'), Job('C')),
+                    (Job('B'), Job('D')), (Job('B'), Job('E')),
+                    (Job('Z'), Job('W'))]
+        self.assertEqual(set(result), set(expected))
 
-        p3 = Pipeline('a', 'b') | Pipeline('c', 'd') | Pipeline('e', 'f', 'g')
-        p3_3 = {'workers': ['e', 'f', 'g'], 'after': None}
-        p3_2 = {'workers': ['c', 'd'], 'after': p3_3}
-        p3_1 = {'workers': ['a', 'b'], 'after': p3_2}
-        self.assertEqual(Pipeline.from_dict(p3_1), p3)
+        result = Pipeline({(Job('A'), Job('B'), Job('C')): [Job('D')]})._graph
+        expected = [(Job('A'), Job('D')), (Job('B'), Job('D')),
+                    (Job('C'), Job('D'))]
+        self.assertEqual(set(result), set(expected))
+
+        result = Pipeline({(Job('A'), Job('B'), Job('C')): [Job('D')],
+                           Job('E'): (Job('B'), Job('F'))})._graph
+        expected = [(Job('A'), Job('D')), (Job('B'), Job('D')),
+                    (Job('C'), Job('D')), (Job('E'), Job('B')),
+                    (Job('E'), Job('F'))]
+        self.assertEqual(set(result), set(expected))
+
+    def test_validate_graph(self):
+        #should have at least one starter node
+        with self.assertRaises(ValueError):
+            Pipeline({Job('A'): Job('A')})
+        with self.assertRaises(ValueError):
+            Pipeline({Job('A'): [Job('B')], Job('B'): [Job('A')]})
+
+        #should not have cycles
+        with self.assertRaises(ValueError):
+            print Pipeline({Job('A'): [Job('B')], Job('B'): [Job('C')],
+                      Job('C'): [Job('B')]})._graph
+        with self.assertRaises(ValueError):
+            Pipeline({Job('A'): [Job('B')], Job('B'): [Job('C')],
+                      Job('C'): [Job('D')], Job('D'): [Job('B')]})
+
+    def test_dot(self):
+        result = Pipeline({(Job('A'), Job('B'), Job('C')): [Job('D')],
+                           Job('E'): (Job('B'), Job('F'))}).to_dot().strip()
+        expected = dedent('''
+        digraph graphname {
+        "Job('A')";
+        "Job('C')";
+        "Job('B')";
+        "Job('E')";
+        "Job('D')";
+        "Job('F')";
+        "Job('A')" -> "Job('D')";
+        "Job('C')" -> "Job('D')";
+        "Job('B')" -> "Job('D')";
+        "Job('E')" -> "Job('B')";
+        "Job('E')" -> "Job('F')";
+        }
+        ''').strip()
+
+        self.assertEqual(result, expected)

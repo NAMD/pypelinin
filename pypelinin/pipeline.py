@@ -1,63 +1,83 @@
 # coding: utf-8
 
-class Pipeline(object):
-    '''Representation of a series of parallel workers
+from itertools import product
 
-    A `Pipeline` is basically a list of workers that will execute in parallel.
-    For example:
-        >>> my_pipeline = Pipeline('w1', 'w2')
+from pygraph.classes.digraph import digraph as DiGraph
+from pygraph.algorithms.cycles import find_cycle
+from pygraph.readwrite.dot import write
 
-    This represents that worker 'w1' will run in parallel to worker 'w2'.
-    You can combine pipelines using the `|` operator, as follows:
-        my_pipeline = Pipeline('s1') | Pipeline('s2')
-    In the example above, worker 's1' will be executed and then, sequentially,
-    's2'.
-    The `|` operation returns a new `Pipeline` object, so you can combine your
-    pipeline objects easily as:
-        >>> p1 = Pipeline('w1.1', 'w1.2')
-        >>> p2 = Pipeline('s2.1') | Pipeline('s2.2')
-        >>> p3 = p1 | p2
-        >>> print repr(p3)
-        Pipeline('w1.1', 'w1.2') | Pipeline('s2.1') | Pipeline('s2.2')
-    '''
-    def __init__(self, *workers):
-        self._workers = []
-        for worker in workers:
-            self._workers.append(worker)
-        self._after = None
+
+class Job(object):
+    def __init__(self, name):
+        self.name = name
 
     def __repr__(self):
-        workers_representation = [repr(w) for w in self._workers]
-        if self._after is None:
-            return 'Pipeline({})'.format(', '.join(workers_representation))
-        else:
-            workers = ', '.join(workers_representation)
-            return 'Pipeline({}) | {}'.format(workers, repr(self._after))
-
-    def __or__(self, other):
-        if type(self) != type(other):
-            raise TypeError('You can only use "|" between Pipeline objects')
-        p = Pipeline(*self._workers)
-        if self._after is None:
-            p._after = other
-        else:
-            p._after = self._after | other
-        return p
+        return 'Job({})'.format(repr(self.name))
 
     def __eq__(self, other):
-        return type(self) == type(other) and \
-               self._workers == other._workers and \
-               self._after == other._after
+        return type(self) == type(other) and self.name == other.name
 
-    def to_dict(self):
-        after = None
-        if self._after is not None:
-            after = self._after.to_dict()
-        return {'workers': self._workers, 'after': after}
+    def __ne__(self, other):
+        return not self.__eq__(other)
 
-    @staticmethod
-    def from_dict(data):
-        p = Pipeline(*data['workers'])
-        if data['after'] is not None:
-            p = p | Pipeline.from_dict(data['after'])
-        return p
+    def __hash__(self):
+        return hash(self.name)
+
+
+class Pipeline(object):
+    def __init__(self, pipeline):
+        self._original_graph = pipeline
+        self._normalize()
+        nodes = set()
+        for key, value in self._graph:
+            nodes.add(key)
+            nodes.add(value)
+        nodes.discard(None)
+        self.jobs = tuple(nodes)
+        self._define_starters()
+        self._create_digraph()
+        if not self._validate():
+            raise ValueError('The pipeline graph have cycles or do not have a '
+                             'starter job')
+
+    def _normalize(self):
+        new_graph = []
+        for keys, values in self._original_graph.items():
+            if type(keys) is Job:
+                keys = [keys]
+            if type(values) not in (tuple, list):
+                values = [values]
+            for key in keys:
+                if not values:
+                    new_graph.append((key, None))
+                else:
+                    for value in values:
+                        new_graph.append((key, value))
+        self._graph = new_graph
+
+    def _define_starters(self):
+        possible_starters = set()
+        others = set()
+        for key, value in self._graph:
+            others.add(value)
+            possible_starters.add(key)
+        self.starters = tuple(possible_starters - others)
+
+    def _create_digraph(self):
+        digraph = DiGraph()
+        digraph.add_nodes(self.jobs)
+        for edge in self._graph:
+            if edge[1] is not None:
+                digraph.add_edge(edge)
+        self._digraph = digraph
+
+    def _validate(self):
+        #TODO: A -> B, A -> C, B -> C
+        if len(self.starters) == 0:
+            return False
+        if find_cycle(self._digraph):
+            return False
+        return True
+
+    def to_dot(self):
+        return write(self._digraph)
