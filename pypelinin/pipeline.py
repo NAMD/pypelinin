@@ -8,8 +8,9 @@ from pygraph.readwrite.dot import write
 
 
 class Job(object):
-    def __init__(self, name):
+    def __init__(self, name, data=None):
         self.name = name
+        self.data = data
 
     def __repr__(self):
         return 'Job({})'.format(repr(self.name))
@@ -25,7 +26,9 @@ class Job(object):
 
 
 class Pipeline(object):
-    def __init__(self, pipeline):
+    def __init__(self, pipeline, data=None):
+        self.data = data
+        self._finished_jobs = set()
         self._original_graph = pipeline
         self._normalize()
         nodes = set()
@@ -39,6 +42,17 @@ class Pipeline(object):
         if not self._validate():
             raise ValueError('The pipeline graph have cycles or do not have a '
                              'starter job')
+        if data is not None:
+            for job in self.jobs:
+                job.data = data
+                job.pipeline = self
+
+        self._dependencies = {job: set() for job in self.jobs}
+        for job_1, job_2 in self._graph:
+            if job_2 is None:
+                continue
+            self._dependencies[job_2].add(job_1)
+        self.sent_jobs = set()
 
     def _normalize(self):
         new_graph = []
@@ -81,3 +95,25 @@ class Pipeline(object):
 
     def to_dot(self):
         return write(self._digraph)
+
+    def add_finished_job(self, job):
+        if job not in self.jobs:
+            raise ValueError('Job {} not in pipeline'.format(job))
+        elif job in self._finished_jobs:
+            raise RuntimeError('Job {} was already declared as '
+                               'finished'.format(job))
+        self._finished_jobs.add(job)
+
+    def finished_job(self, job):
+        return job in self._finished_jobs
+
+    def finished(self):
+        return set(self.jobs) == self._finished_jobs
+
+    def available_jobs(self):
+        available = set()
+        for job in self.jobs:
+            if self._dependencies[job].issubset(self._finished_jobs) and \
+               job not in self._finished_jobs:
+                available.add(job)
+        return available

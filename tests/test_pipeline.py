@@ -132,3 +132,176 @@ class GraphTest(unittest.TestCase):
         ''').strip()
 
         self.assertEqual(result, expected)
+
+    def test_pipeline_should_propagate_data_among_jobs(self):
+        job_1 = Job('w1')
+        job_2 = Job('w2')
+        job_3 = Job('w3')
+        pipeline_data = {'python': 42}
+        pipeline = Pipeline({job_1: job_2, job_2: job_3}, data=pipeline_data)
+        self.assertEqual(pipeline.data, pipeline_data)
+        self.assertEqual(job_1.data, pipeline_data)
+        self.assertEqual(job_2.data, pipeline_data)
+        self.assertEqual(job_3.data, pipeline_data)
+        self.assertEqual(job_1.pipeline, pipeline)
+        self.assertEqual(job_2.pipeline, pipeline)
+        self.assertEqual(job_3.pipeline, pipeline)
+
+    def test_pipeline_add_finished_job(self):
+        job_1 = Job('w1')
+        job_2 = Job('w2')
+        job_3 = Job('w3')
+        pipeline_data = {'python': 42}
+        pipeline = Pipeline({job_1: job_2, job_2: job_3}, data=pipeline_data)
+        job_4 = Job('w4')
+
+        self.assertFalse(pipeline.finished_job(job_1))
+        self.assertFalse(pipeline.finished_job(job_2))
+        self.assertFalse(pipeline.finished_job(job_3))
+
+        pipeline.add_finished_job(job_1)
+        self.assertTrue(pipeline.finished_job(job_1))
+        self.assertFalse(pipeline.finished_job(job_2))
+        self.assertFalse(pipeline.finished_job(job_3))
+
+        pipeline.add_finished_job(job_2)
+        self.assertTrue(pipeline.finished_job(job_1))
+        self.assertTrue(pipeline.finished_job(job_2))
+        self.assertFalse(pipeline.finished_job(job_3))
+
+        pipeline.add_finished_job(job_3)
+        self.assertTrue(pipeline.finished_job(job_1))
+        self.assertTrue(pipeline.finished_job(job_2))
+        self.assertTrue(pipeline.finished_job(job_3))
+
+        with self.assertRaises(ValueError):
+            pipeline.add_finished_job(job_4) # job not in pipeline
+        with self.assertRaises(RuntimeError):
+            pipeline.add_finished_job(job_3) # already finished
+
+    def test_pipeline_finished(self):
+        job_1 = Job('w1')
+        job_2 = Job('w2')
+        job_3 = Job('w3')
+        pipeline_data = {'python': 42}
+        pipeline = Pipeline({job_1: job_2, job_2: job_3}, data=pipeline_data)
+
+        self.assertFalse(pipeline.finished())
+        pipeline.add_finished_job(job_1)
+        self.assertFalse(pipeline.finished())
+        pipeline.add_finished_job(job_2)
+        self.assertFalse(pipeline.finished())
+        pipeline.add_finished_job(job_3)
+        self.assertTrue(pipeline.finished())
+
+    def test_default_attributes(self):
+        pipeline = Pipeline({Job('test'): None})
+        self.assertEqual(pipeline.data, None)
+        self.assertEqual(pipeline.jobs, (Job('test'),))
+        self.assertEqual(pipeline.sent_jobs, set())
+
+    def test_available_jobs(self):
+        job_1 = Job('w1')
+        job_2 = Job('w2')
+        job_3 = Job('w3')
+        pipeline_data = {'python': 42}
+        pipeline = Pipeline({job_1: job_2, job_2: job_3}, data=pipeline_data)
+
+        expected = [job_1]
+        self.assertEqual(pipeline.available_jobs(), set(expected))
+
+        pipeline.add_finished_job(job_1)
+        expected = [job_2]
+        self.assertEqual(pipeline.available_jobs(), set(expected))
+
+        pipeline.add_finished_job(job_2)
+        expected = [job_3]
+        self.assertEqual(pipeline.available_jobs(), set(expected))
+
+        pipeline.add_finished_job(job_3)
+        self.assertEqual(pipeline.available_jobs(), set())
+
+        job_4, job_5, job_6, job_7 = Job('w4'), Job('w5'), Job('w6'), Job('w7')
+        job_8, job_9, job_10 = Job('8'), Job('9'), Job('10')
+        job_11, job_12, job_13 = Job('11'), Job('12'), Job('13')
+        job_14, job_15, job_16 = Job('14'), Job('15'), Job('16')
+        pipeline_data = {'python': 42}
+        pipeline = Pipeline({job_1: (job_2, job_3),
+                             job_2: (job_4, job_16),
+                             job_3: job_4,
+                             job_4: job_5,
+                             job_5: (job_6, job_7, job_8, job_9),
+                             (job_6, job_7, job_8): job_10,
+                             (job_10, job_11): (job_12, job_13, job_14),
+                             job_15: None},
+                            data=pipeline_data)
+
+        expected = [job_1, job_11, job_15]
+        self.assertEqual(pipeline.available_jobs(), set(expected))
+        self.assertEqual(pipeline.available_jobs(), set(pipeline.starters))
+
+        pipeline.add_finished_job(job_1)
+        expected = [job_11, job_15, job_2, job_3]
+        self.assertEqual(pipeline.available_jobs(), set(expected))
+
+        pipeline.add_finished_job(job_2)
+        expected = [job_11, job_15, job_3, job_16]
+        self.assertEqual(pipeline.available_jobs(), set(expected))
+
+        pipeline.add_finished_job(job_3)
+        expected = [job_11, job_15, job_4, job_16]
+        self.assertEqual(pipeline.available_jobs(), set(expected))
+
+        pipeline.add_finished_job(job_16)
+        expected = [job_11, job_15, job_4]
+        self.assertEqual(pipeline.available_jobs(), set(expected))
+
+        pipeline.add_finished_job(job_4)
+        expected = [job_11, job_15, job_5]
+        self.assertEqual(pipeline.available_jobs(), set(expected))
+
+        pipeline.add_finished_job(job_11)
+        expected = [job_15, job_5]
+        self.assertEqual(pipeline.available_jobs(), set(expected))
+
+        pipeline.add_finished_job(job_5)
+        expected = [job_15, job_6, job_7, job_8, job_9]
+        self.assertEqual(pipeline.available_jobs(), set(expected))
+
+        pipeline.add_finished_job(job_6)
+        expected = [job_15, job_7, job_8, job_9]
+        self.assertEqual(pipeline.available_jobs(), set(expected))
+
+        pipeline.add_finished_job(job_15)
+        expected = [job_7, job_8, job_9]
+        self.assertEqual(pipeline.available_jobs(), set(expected))
+
+        pipeline.add_finished_job(job_7)
+        expected = [job_8, job_9]
+        self.assertEqual(pipeline.available_jobs(), set(expected))
+
+        pipeline.add_finished_job(job_9)
+        expected = [job_8]
+        self.assertEqual(pipeline.available_jobs(), set(expected))
+
+        pipeline.add_finished_job(job_8)
+        expected = [job_10]
+        self.assertEqual(pipeline.available_jobs(), set(expected))
+
+        pipeline.add_finished_job(job_10)
+        expected = [job_12, job_13, job_14]
+        self.assertEqual(pipeline.available_jobs(), set(expected))
+
+        pipeline.add_finished_job(job_13)
+        expected = [job_12, job_14]
+        self.assertEqual(pipeline.available_jobs(), set(expected))
+
+        pipeline.add_finished_job(job_12)
+        expected = [job_14]
+        self.assertEqual(pipeline.available_jobs(), set(expected))
+
+        pipeline.add_finished_job(job_14)
+        expected = []
+        self.assertEqual(pipeline.available_jobs(), set(expected))
+
+        self.assertTrue(pipeline.finished())
