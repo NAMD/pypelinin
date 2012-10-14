@@ -8,25 +8,30 @@ from pygraph.readwrite.dot import write
 
 
 class Job(object):
-    def __init__(self, name, data=None):
-        self.name = name
+    def __init__(self, worker_name, data=None):
+        self.worker_name = worker_name
         self.data = data
 
     def __repr__(self):
-        return 'Job({})'.format(repr(self.name))
+       #TODO: change this when add `input`
+        return 'Job({})'.format(repr(self.worker_name))
 
     def __eq__(self, other):
-        return type(self) == type(other) and self.name == other.name
+        #TODO: change this when add `input`
+        return type(self) == type(other) and \
+               self.worker_name == other.worker_name
 
     def __ne__(self, other):
         return not self.__eq__(other)
 
     def __hash__(self):
-        return hash(self.name)
+        #TODO: change this when add `input`
+        return hash(self.worker_name) #TODO: change this when add `input`
 
 
 class Pipeline(object):
     def __init__(self, pipeline, data=None):
+        #TODO: should raise if pipeline is not composed of `Job`s?
         self.data = data
         self._finished_jobs = set()
         self._original_graph = pipeline

@@ -4,8 +4,28 @@ import unittest
 from textwrap import dedent
 from pypelinin import Job, Pipeline
 
+class JobTest(unittest.TestCase):
+    def test_worker_name(self):
+        self.assertEqual(Job('ABC').worker_name, 'ABC')
 
-class GraphTest(unittest.TestCase):
+    def test_should_start_with_no_data(self):
+        self.assertEqual(Job('ABC').data, None)
+
+    def test_repr(self):
+        self.assertEqual(repr(Job('ABC')), "Job('ABC')")
+
+    def test_equal_not_equal_and_hash(self):
+        job_1 = Job('qwe')
+        job_2 = Job('qwe')
+        job_3 = Job('bla')
+        self.assertTrue(job_1 == job_2)
+        self.assertTrue(job_2 == job_1)
+        self.assertTrue(job_1 != job_3)
+        self.assertTrue(job_3 != job_1)
+        self.assertEqual(hash(job_1), hash(job_2))
+        self.assertNotEqual(hash(job_1), hash(job_3))
+
+class PipelineTest(unittest.TestCase):
     def test_jobs(self):
         result = Pipeline({Job('A'): [Job('B')],
                            Job('B'): [Job('C'), Job('D'), Job('E')],
