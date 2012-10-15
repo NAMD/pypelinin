@@ -211,9 +211,16 @@ class Broker(Client):
                 process_info['data'] = worker.job_info['data']
             processes.append(process_info)
         data = {'host': host_info, 'timestamp': time(), 'processes': processes}
-        self._store.save_monitoring(data)
+        try:
+            self._store.save_monitoring(data)
+        except Exception as e:
+            #TODO: what to do?
+            self.logger.error('Could not save monitoring information into '
+                              'store with parameters: {}. Exception: {}'\
+                              .format(data, e))
+            return
         self.last_time_saved_monitoring_information = time()
-        self.logger.info('Saved monitoring information in MongoDB')
+        self.logger.info('Saved monitoring information')
         self.logger.debug('  Information: {}'.format(data))
 
     def start(self):
@@ -238,7 +245,14 @@ class Broker(Client):
                 'worker_requires': worker_requires,
                 'data': job_description['data']}
         #TODO: handle if retrieve raises exception
-        worker_input = self._store.retrieve(info)
+        try:
+            worker_input = self._store.retrieve(info)
+        except Exception as e:
+            #TODO: what to do?
+            self.logger.error('Could not retrieve data from store '
+                              'with parameters: {}. Exception: {}'\
+                              .format(info, e))
+            return
         job_info = {'worker': worker,
                     'worker_input': worker_input,
                     'data': job_description['data'],
@@ -308,7 +322,15 @@ class Broker(Client):
                 #TODO: what if I want to the caller to receive job information
                 #      as a "return" from a function call? Should use a store?
                 #TODO: handle if retrieve raises exception
-                self._store.save(job_information)
+                try:
+                    self._store.save(job_information)
+                except Exception as e:
+                    #TODO: what to do?
+                    self.logger.error('Could not save data into store '
+                                      'with parameters: '
+                                      '{}. Exception: {}'\
+                                      .format(job_information, e))
+                    return
             except ValueError:
                 self.request({'command': 'job failed',
                               'job id': job_id,
