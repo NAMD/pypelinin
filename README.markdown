@@ -29,6 +29,19 @@ We have 3 daemons you need to run:
   simultaneously).
 
 
+Installation
+------------
+
+First you need to install `libzmq`, its headers and compilers needed to compile
+it. On a Debian/Ubuntu machine, run:
+
+    sudo aptitude install libzmq libzmq-dev build-essential
+
+Then, install the Python package:
+
+    pip install pypelinin
+
+
 Usage
 -----
 
@@ -93,7 +106,7 @@ Let's learn doing! Create a virtualenv, install pypelinin and then download our
     mkvirtualenv test-pypelinin
     pip install pypelinin
     wget https://github.com/turicas/pypelinin/tarball/develop -O pypelinin.tar.gz
-    tar -xfz pypelinin.tar.gz && rm pypelinin.tar.gz
+    tar xfz pypelinin.tar.gz && rm pypelinin.tar.gz
     cd turicas-pypelinin-*/example/
 
 Now your environment is created and you need to run the daemons, each one in a
