@@ -5,7 +5,7 @@
 
 from time import time
 from uuid import uuid4
-from . import Client
+from . import Client, Job, Pipeline
 
 
 class Pipeliner(Client):
@@ -54,8 +54,8 @@ class Pipeliner(Client):
         self.send_api_request({'command': 'get pipeline'})
         message = self.get_api_reply()
         #TODO: if router stops and doesn't answer, pipeliner will stop here
-        if 'workers' in message and 'data' in message:
-            if message['data'] is not None:
+        if 'pipeline' in message:
+            if message['pipeline'] is not None:
                 self.logger.info('Got this pipeline: {}'.format(message))
                 if self._new_pipelines is None:
                     self._new_pipelines = 0
@@ -64,9 +64,8 @@ class Pipeliner(Client):
                 return message
             else:
                 self._new_pipelines = 0
-        elif 'pipeline' in message and message['pipeline'] is None:
-            self.logger.info('Bad bad router, no pipeline for me.')
-            return None
+                self.logger.info('Bad bad router, no pipeline for me.')
+                return None
         else:
             self.logger.info('Ignoring malformed pipeline: {}'.format(message))
             #TODO: send a 'rejecting pipeline' request to router
@@ -77,60 +76,65 @@ class Pipeliner(Client):
         while pipeline_definition is not None:
             pipeline_definition = self.ask_for_a_pipeline()
             if pipeline_definition is not None:
-                self.start_pipeline(pipeline_definition)
+                pipeline = \
+                        Pipeline.deserialize(pipeline_definition['pipeline'])
+                pipeline.id = pipeline_definition['pipeline id']
+                pipeline.started_at = time()
+                self._pipelines[pipeline.id] = pipeline
+                self.start_pipeline_jobs(pipeline, pipeline.starters)
 
-    def _send_job(self, worker):
-        job_request = {'command': 'add job', 'worker': worker.name,
-                       'data': worker.data}
+    def _start_job(self, job):
+        job_request = {'command': 'add job', 'worker': job.worker_name,
+                       'data': job.data}
         self.send_api_request(job_request)
         self.logger.info('Sent job request: {}'.format(job_request))
         message = self.get_api_reply()
         self.logger.info('Received from router API: {}'.format(message))
-        self._jobs[message['job id']] = worker
-        subscribe_message = 'job finished: {}'.format(message['job id'])
+        job_id = message['job id']
+        subscribe_message = 'job finished: {}'.format(job_id)
         self.broadcast_subscribe(subscribe_message)
         self.logger.info('Subscribed on router broadcast to: {}'\
                          .format(subscribe_message))
+        return job_id
 
-    def start_pipeline(self, pipeline_definition):
-        pipeline = Worker.from_dict(pipeline_definition['workers'])
-        pipeline.pipeline_id = pipeline_definition['pipeline id']
-        pipeline.data = pipeline_definition['data']
-        pipeline.pipeline_started_at = time()
-        self._pipelines[pipeline.pipeline_id] = [pipeline]
-        self._send_job(pipeline)
+    def start_pipeline_jobs(self, pipeline, jobs):
+        job_ids = []
+        for job in jobs:
+            job_id = self._start_job(job)
+            self._jobs[job_id] = job
+            pipeline.sent_jobs.add(job)
 
     def verify_jobs(self):
         self._update_broadcast()
-        new_messages = []
         for message in self._messages:
             if message.startswith('job finished: '):
                 job_id = message.split(': ')[1].split(' ')[0]
                 if job_id in self._jobs:
                     self.logger.info('Processing finished job id {}.'.format(job_id))
-                    worker = self._jobs[job_id]
-                    self._pipelines[worker.pipeline_id].remove(worker)
-                    next_workers = worker.after
-                    for next_worker in next_workers:
-                        self.logger.info('   worker after: {}'.format(next_worker.name))
-                        next_worker.data = worker.data
-                        next_worker.pipeline_id = worker.pipeline_id
-                        next_worker.pipeline_started_at = worker.pipeline_started_at
-                        self._pipelines[worker.pipeline_id].append(next_worker)
-                        self._send_job(next_worker)
+                    job = self._jobs[job_id]
+                    pipeline = job.pipeline
+                    pipeline.add_finished_job(job)
                     del self._jobs[job_id]
-                    if not self._pipelines[worker.pipeline_id]:
-                        total_time = time() - worker.pipeline_started_at
-                        self.logger.info('Finished pipeline {}'\
-                                         .format(worker.pipeline_id))
-                        self.send_api_request({'command': 'pipeline finished',
-                                'pipeline id': worker.pipeline_id,
-                                'duration': total_time})
-                        self.get_api_reply()
-                        #TODO: check reply
-                        del self._pipelines[worker.pipeline_id]
+                    if pipeline.finished():
+                        total_time = time() - pipeline.started_at
+                        self.send_api_request(
+                                {'command': 'pipeline finished',
+                                'pipeline id': pipeline.id,
+                                'duration': total_time}
+                        )
+                        self.logger.info('Finished pipeline_id={}, '
+                                         'duration={}'.format(pipeline.id,
+                                                              total_time))
+                        self.get_api_reply() #TODO: check reply
+                        del self._pipelines[pipeline.id]
                         self.get_a_pipeline()
+                    else:
+                        jobs_to_send = pipeline.available_jobs() - pipeline.sent_jobs
+                        if jobs_to_send:
+                            self.start_pipeline_jobs(pipeline, jobs_to_send)
                 self.broadcast_unsubscribe(message)
+            elif message == 'new pipeline':
+                self.get_a_pipeline()
         self._messages = []
 
     def run(self):
