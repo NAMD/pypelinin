@@ -5,7 +5,7 @@
 
 from time import time
 from uuid import uuid4
-from . import Client, Job, Pipeline
+from . import Client, Job, PipelineForPipeliner
 
 
 class Pipeliner(Client):
@@ -79,7 +79,7 @@ class Pipeliner(Client):
             pipeline_definition = self.ask_for_a_pipeline()
             if pipeline_definition is not None:
                 pipeline = \
-                        Pipeline.deserialize(pipeline_definition['pipeline'])
+                        PipelineForPipeliner.deserialize(pipeline_definition['pipeline'])
                 pipeline.id = pipeline_definition['pipeline id']
                 pipeline.started_at = time()
                 self._pipelines[pipeline.id] = pipeline

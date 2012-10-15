@@ -1,10 +1,13 @@
 # coding: utf-8
 
 from itertools import product
+from time import time
 
 from pygraph.classes.digraph import digraph as DiGraph
 from pygraph.algorithms.cycles import find_cycle
 from pygraph.readwrite.dot import write
+
+from . import Client
 
 
 class Job(object):
@@ -51,6 +54,7 @@ class Pipeline(object):
     def __init__(self, pipeline, data=None):
         #TODO: should raise if pipeline is not composed of `Job`s?
         self.data = data
+        self.id = None
         self._finished_jobs = set()
         self._original_graph = self._graph = pipeline
         if type(pipeline) == dict:
@@ -73,6 +77,15 @@ class Pipeline(object):
                 continue
             self._dependencies[job_2].add(job_1)
         self.sent_jobs = set()
+
+    def __eq__(self, other):
+        return self._graph == other._graph
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __hash__(self):
+        return hash(self.serialize())
 
     def _normalize(self):
         new_graph = []
@@ -140,7 +153,7 @@ class Pipeline(object):
         return tuple({'graph': tuple(result), 'data': self.data}.items())
 
     @staticmethod
-    def deserialize(info):
+    def _deserialize(info):
         info = dict(info)
         new_graph = []
         for key, value in info['graph']:
@@ -149,7 +162,18 @@ class Pipeline(object):
             if value is not None:
                 deserialized_value = Job.deserialize(value)
             new_graph.append((deserialized_key, deserialized_value))
-        return Pipeline(new_graph, data=info['data'])
+        return new_graph, info['data']
+
+    @staticmethod
+    def deserialize(info):
+        new_graph, data = Pipeline._deserialize(info)
+        return Pipeline(new_graph, data=data)
+
+class PipelineForPipeliner(Pipeline):
+    @staticmethod
+    def deserialize(info):
+        new_graph, data = PipelineForPipeliner._deserialize(info)
+        return PipelineForPipeliner(new_graph, data=data)
 
     def add_finished_job(self, job):
         if job not in self.jobs:
@@ -173,11 +197,49 @@ class Pipeline(object):
                 available.add(job)
         return available
 
-    def __eq__(self, other):
-        return self._graph == other._graph
+class PipelineManager(Client):
+    #TODO: is there any way to subscribe to job ids? So I can know the status
+    #      of each job in pipeline with this object
+    def __init__(self, api, broadcast, poll_time=50): # milliseconds
+        super(PipelineManager, self).__init__()
+        self.poll_time = poll_time
+        self._pipelines = set()
+        self._pipeline_from_id = {}
+        self.connect(api=api, broadcast=broadcast)
 
-    def __ne__(self, other):
-        return not self.__eq__(other)
+    def start(self, pipeline):
+        if pipeline in self._pipelines:
+            raise ValueError('This pipeline was already started')
+        self._pipelines.add(pipeline)
+        request = {'command': 'add pipeline', 'pipeline': pipeline.serialize()}
+        self.send_api_request(request)
+        result = self.get_api_reply()
+        pipeline_id = str(result['pipeline id'])
+        pipeline.id = pipeline_id
+        pipeline.finished = False
+        self._pipeline_from_id[pipeline_id] = pipeline
+        pipeline.started_at = time()
+        self.broadcast_subscribe('pipeline finished: id=' + pipeline_id)
+        return pipeline_id
 
-    def __hash__(self):
-        return hash(self.serialize())
+    def _update_broadcast(self):
+        while self.broadcast_poll(self.poll_time):
+            message = self.broadcast_receive()
+            if message.startswith('pipeline finished: '):
+                try:
+                    data = message.split(': ')[1].split(', ')
+                    pipeline_id = data[0].split('=')[1]
+                    duration = float(data[1].split('=')[1])
+                except (IndexError, ValueError):
+                    continue
+                pipeline = self._pipeline_from_id[pipeline_id]
+                pipeline.duration = duration
+                pipeline.finished = True
+                self.broadcast_unsubscribe(message)
+
+    def finished(self, pipeline):
+        if pipeline not in self._pipelines:
+            raise ValueError('This pipeline is not being managed by this '
+                             'PipelineMager')
+        self._update_broadcast()
+        return pipeline.finished

@@ -128,8 +128,8 @@ class Router(object):
                     else:
                         self.pending_pipeline_ids.remove(pipeline_id)
                         self.reply({'answer': 'good job!'})
-                        new_message = 'pipeline finished: {}'\
-                                      .format(pipeline_id)
+                        new_message = 'pipeline finished: id={}, duration={}'\
+                                      .format(pipeline_id, message['duration'])
                         self.broadcast.send(new_message)
                         self.logger.info('[Broadcast] Sent: {}'\
                                          .format(new_message))

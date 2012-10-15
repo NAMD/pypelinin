@@ -19,7 +19,7 @@ from utils import default_config
 
 TIMEOUT = 1500
 DEBUG_STDOUT = False
-DEBUG_STDERR = True
+DEBUG_STDERR = False
 
 def _print_debug(name, message):
     print()
