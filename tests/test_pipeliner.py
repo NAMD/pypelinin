@@ -16,6 +16,7 @@ from pypelinin import Job, Pipeline
 TIMEOUT = 1500
 DEBUG_STDOUT = False
 DEBUG_STDERR = False
+#TODO: move process management helper functions to another module
 
 def _print_debug(name, message):
     print()
@@ -100,43 +101,44 @@ class TestPipeliner(unittest.TestCase):
         self.api.send_json({'pipeline': pipeline.serialize(),
                             'pipeline id': pipeline_definition['pipeline id']})
 
-    def check_add_job(self):
+    def get_api_request(self, ignore_get_pipeline=True):
         if not self.api.poll(TIMEOUT):
-            self.fail("Didn't receive 'add job' from pipeliner")
-        message = self.api.recv_json()
+            self.fail("Didn't receive message in API channel")
+        else:
+            message = self.api.recv_json()
+            if not ignore_get_pipeline:
+                return message
+            else:
+                if message['command'] == 'get pipeline':
+                    self.send_no_pipeline()
+                    return self.get_api_request()
+                else:
+                    return message
+
+    def check_add_job(self):
+        message = self.get_api_request()
         if message['command'] == 'add job':
             job_id = uuid4().hex
             self.api.send_json({'answer': 'job accepted',
                                 'job id': job_id})
             return message, job_id
-        elif message['command'] == 'get pipeline':
-            self.send_no_pipeline()
-            return self.check_add_job()
+        else:
+            seif.fail('Should not receive message "{}" here'.format(message))
 
     def ignore_get_pipeline(self):
         if self.api.poll(TIMEOUT):
             message = self.api.recv_json()
             if message['command'] == 'get pipeline':
                 self.send_no_pipeline()
+                return message
             else:
                 self.fail('Should not receive message "{}" '
                           'here.'.format(message))
 
-    def get_api_request(self):
-        if not self.api.poll(TIMEOUT):
-            self.fail("Didn't receive message in API channel")
-        else:
-            message = self.api.recv_json()
-            return message
-
-
     def test_should_receive_get_pipeline_when_broadcast_new_pipeline(self):
         for i in range(10): #everytime it receives a new pipeline broadcast...
             self.broadcast.send('new pipeline')
-            if not self.api.poll(TIMEOUT):
-                self.fail("Didn't receive 'get pipeline' from pipeliner")
-            message = self.api.recv_json()
-            self.send_no_pipeline()
+            message = self.ignore_get_pipeline()
             self.assertEqual(message, {'command': 'get pipeline'})
 
     def test_should_create_a_job_request_after_getting_a_pipeline(self):
@@ -144,9 +146,7 @@ class TestPipeliner(unittest.TestCase):
         for index in range(20):
             if index < 10:
                 self.broadcast.send('new pipeline')
-            if not self.api.poll(TIMEOUT):
-                self.fail("Didn't receive 'get pipeline' from pipeliner")
-            message = self.api.recv_json()
+            message = self.get_api_request(ignore_get_pipeline=False)
             if message == {'command': 'get pipeline'}:
                 pipeline = {'graph': {Job('Dummy'): None},
                             'data': {'index': index},
@@ -161,38 +161,22 @@ class TestPipeliner(unittest.TestCase):
 
     def test_pipeliner_should_send_pipeline_finished_when_router_sends_job_finished(self):
         self.broadcast.send('job finished: {}'.format(uuid4().hex))
-        if self.api.poll(TIMEOUT):
-            message = self.api.recv_json()
-            if message['command'] != 'get pipeline':
-                self.fail('Should not receive any message at this point')
-            else:
-                self.send_no_pipeline()
-
+        self.ignore_get_pipeline()
         self.broadcast.send('new pipeline')
-        if not self.api.poll(TIMEOUT):
-            self.fail("Didn't receive 'get pipeline' from pipeliner")
-        message = self.api.recv_json()
+        message = self.get_api_request(ignore_get_pipeline=False)
         pipeline_id = uuid4().hex
         pipeline = {'graph': {Job('Dummy'): None},
                     'data': {}, 'pipeline id': pipeline_id}
         self.send_pipeline(pipeline)
 
-        if not self.api.poll(TIMEOUT):
-            self.fail("Didn't receive 'get pipeline' from pipeliner")
-        message = self.api.recv_json()
+        message = self.get_api_request()
         job_id = uuid4().hex
         self.api.send_json({'answer': 'job accepted',
                             'job id': job_id})
         self.broadcast.send('job finished: {}'.format(job_id))
 
-        if not self.api.poll(TIMEOUT):
-            self.fail("Didn't receive 'get pipeline' from pipeliner")
-        message = self.api.recv_json()
-        if message['command'] == 'get pipeline':
-            self.send_no_pipeline()
-        if not self.api.poll(TIMEOUT):
-            self.fail("Didn't receive 'finished pipeline' from pipeliner")
-        message = self.api.recv_json()
+        self.ignore_get_pipeline()
+        message = self.get_api_request()
         self.assertIn('command', message)
         self.assertIn('pipeline id', message)
         self.assertIn('duration', message)
@@ -201,9 +185,7 @@ class TestPipeliner(unittest.TestCase):
 
     def test_pipeliner_should_be_able_to_add_jobs_in_sequence(self):
         self.broadcast.send('new pipeline')
-        if not self.api.poll(TIMEOUT):
-            self.fail("Didn't receive 'get pipeline' from pipeliner")
-        message = self.api.recv_json()
+        message = self.get_api_request(ignore_get_pipeline=False)
         pipeline_id = uuid4().hex
         pipeline_graph = {Job('Dummy'): Job('Dummy2'),
                           Job('Dummy2'): Job('Dummy3')}
@@ -216,20 +198,13 @@ class TestPipeliner(unittest.TestCase):
         job_workers = []
         finished_job_counter = 0
         while finished_job_counter < 3:
-            if not self.api.poll(TIMEOUT):
-                self.fail("Didn't receive 'add job' from pipeliner")
-            message = self.api.recv_json()
+            message = self.get_api_request()
             if message['command'] == 'add job':
                 job_id = uuid4().hex
                 self.api.send_json({'answer': 'job accepted',
                                     'job id': job_id})
                 job_workers.append(message['worker'])
-                if self.api.poll(TIMEOUT * 10):
-                    message = self.api.recv_json()
-                    if message['command'] == 'get pipeline':
-                        self.send_no_pipeline()
-                    else:
-                        self.fail("Should not receive messages at this point")
+                self.ignore_get_pipeline()
                 finished_job_counter += 1
                 self.broadcast.send('job finished: {}'.format(job_id))
             elif message['command'] == 'get pipeline':
@@ -238,9 +213,7 @@ class TestPipeliner(unittest.TestCase):
         # then, check order of jobs sent
         self.assertEqual(job_workers, ['Dummy', 'Dummy2', 'Dummy3'])
 
-        if not self.api.poll(TIMEOUT):
-            self.fail("Didn't receive 'finished pipeline' from pipelines")
-        message = self.api.recv_json()
+        message = self.get_api_request()
         end_time = time()
         total_time = end_time - start_time
         self.assertIn('command', message)
@@ -252,9 +225,7 @@ class TestPipeliner(unittest.TestCase):
 
     def test_pipeliner_should_be_able_to_add_jobs_in_parallel(self):
         self.broadcast.send('new pipeline')
-        if not self.api.poll(TIMEOUT):
-            self.fail("Didn't receive 'get pipeline' from pipeliner")
-        message = self.api.recv_json()
+        message = self.get_api_request(ignore_get_pipeline=False)
         pipeline_id = uuid4().hex
         pipeline = {Job('Dummy'): None, Job('Dummy2'): None,
                     Job('Dummy3'): None}
@@ -266,9 +237,7 @@ class TestPipeliner(unittest.TestCase):
 
         job_ids = []
         while len(job_ids) < 3:
-            if not self.api.poll(TIMEOUT):
-                self.fail("Didn't receive 'add job' from pipeliner")
-            message = self.api.recv_json()
+            message = self.get_api_request()
             if message['command'] == 'add job':
                 job_id = uuid4().hex
                 self.api.send_json({'answer': 'job accepted',
@@ -279,15 +248,7 @@ class TestPipeliner(unittest.TestCase):
         for job_id in job_ids:
             self.broadcast.send('job finished: {}'.format(job_id))
 
-        pipeline_finished = False
-        while not pipeline_finished:
-            if not self.api.poll(TIMEOUT):
-                self.fail("Didn't receive 'finished pipeline' from pipelines")
-            message = self.api.recv_json()
-            if message['command'] == 'get pipeline':
-                self.send_no_pipeline()
-            else:
-                pipeline_finished = True
+        message = self.get_api_request()
         end_time = time()
         total_time = end_time - start_time
         self.assertIn('command', message)
@@ -299,9 +260,7 @@ class TestPipeliner(unittest.TestCase):
 
     def test_pipeliner_should_be_able_to_add_jobs_in_sequence_and_parallel_mixed(self):
         self.broadcast.send('new pipeline')
-        if not self.api.poll(TIMEOUT):
-            self.fail("Didn't receive 'get pipeline' from pipeliner")
-        message = self.api.recv_json()
+        message = self.get_api_request(ignore_get_pipeline=False)
         pipeline_id = uuid4().hex
         pipeline_graph = {Job('w1'): (Job('w2.1'), Job('w2.2'), Job('w2.3')),
                           (Job('w2.1'), Job('w2.2'), Job('w2.3')): Job('w3')}
@@ -339,9 +298,3 @@ class TestPipeliner(unittest.TestCase):
         self.assertEqual(message['pipeline id'], pipeline_id)
         self.assertTrue(message['duration'] > total_time)
         self.assertTrue(message['duration'] < 1.5 * total_time)
-
-
-#TODO: create helper functions for interacting with pipeliner
-#TODO: max of pipelines per Pipeliner?
-#TODO: handle incorrect pipelines (ignored) - send message to Router
-#TODO: move process management helper functions to another module

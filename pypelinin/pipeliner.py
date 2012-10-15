@@ -12,6 +12,8 @@ class Pipeliner(Client):
     #TODO: should send monitoring information?
     #TODO: should receive and handle a 'job error' from router when some job
     #      could not be processed (timeout, worker not found etc.)
+    #TODO: max of pipelines per Pipeliner?
+    #TODO: handle incorrect pipelines (ignored) - send message to Router
 
     def __init__(self, api, broadcast, logger=None, poll_time=50):
         super(Pipeliner, self).__init__()
