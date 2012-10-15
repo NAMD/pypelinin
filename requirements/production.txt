@@ -1,0 +1,4 @@
+pyzmq
+psutil
+python-graph-core
+python-graph-dot
