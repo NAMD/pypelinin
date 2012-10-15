@@ -25,7 +25,27 @@ class JobTest(unittest.TestCase):
         self.assertEqual(hash(job_1), hash(job_2))
         self.assertNotEqual(hash(job_1), hash(job_3))
 
+    def test_serialize_and_deserialize(self):
+        with self.assertRaises(ValueError):
+            Job.deserialize({}) # no key 'worker_name'
+
+        job = Job('test')
+        expected = tuple({'worker_name': 'test'}.items())
+        self.assertEqual(job.serialize(), expected)
+        self.assertEqual(Job.deserialize(expected), job)
+
+        job_with_data = Job('testing', data={'python': 42, 'spam': 'eggs'})
+        expected_with_data = {'worker_name': 'testing',
+                              'data': {'python': 42, 'spam': 'eggs'}}
+        expected_with_data = tuple(expected_with_data.items())
+        self.assertEqual(job_with_data.serialize(), expected_with_data)
+        self.assertEqual(Job.deserialize(expected_with_data), job_with_data)
+
 class PipelineTest(unittest.TestCase):
+    def test_only_accept_Job_objects(self):
+        with self.assertRaises(ValueError):
+            Pipeline({'test': 123})
+
     def test_jobs(self):
         result = Pipeline({Job('A'): [Job('B')],
                            Job('B'): [Job('C'), Job('D'), Job('E')],
@@ -54,8 +74,8 @@ class PipelineTest(unittest.TestCase):
         expected = (Job('A'), Job('Z'))
         self.assertEqual(set(result), set(expected))
 
-        result = Pipeline({('A', 'B', 'C'): ['D']}).starters
-        expected = ['A', 'B', 'C']
+        result = Pipeline({(Job('A'), Job('B'), Job('C')): Job('D')}).starters
+        expected = [Job('A'), Job('B'), Job('C')]
         self.assertEqual(set(result), set(expected))
 
         result = Pipeline({(Job('A'), Job('B'), Job('C')): [Job('D')],
@@ -80,9 +100,12 @@ class PipelineTest(unittest.TestCase):
         expected = [(Job('A'), Job('B')), (Job('C'), Job('B'))]
         self.assertEqual(set(result), set(expected))
 
-        result = Pipeline({('A', 'C'): ['B', 'D', 'E']})._graph
-        expected = [('A', 'B'), ('A', 'D'), ('A', 'E'), ('C', 'B'), ('C', 'D'),
-                    ('C', 'E')]
+        graph = {(Job('A'), Job('C')): [Job('B'), Job('D'), Job('E')]}
+        result = Pipeline(graph)._graph
+        expected = [(Job('A'), Job('B')), (Job('A'), Job('D')),
+                    (Job('A'), Job('E')), (Job('C'), Job('B')),
+                    (Job('C'), Job('D')),
+                    (Job('C'), Job('E'))]
         self.assertEqual(set(result), set(expected))
 
         result = Pipeline({Job('ABC'): []})._graph # problem here if use string
@@ -126,7 +149,7 @@ class PipelineTest(unittest.TestCase):
 
         #should not have cycles
         with self.assertRaises(ValueError):
-            print Pipeline({Job('A'): [Job('B')], Job('B'): [Job('C')],
+            Pipeline({Job('A'): [Job('B')], Job('B'): [Job('C')],
                       Job('C'): [Job('B')]})._graph
         with self.assertRaises(ValueError):
             Pipeline({Job('A'): [Job('B')], Job('B'): [Job('C')],
@@ -325,3 +348,45 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(pipeline.available_jobs(), set(expected))
 
         self.assertTrue(pipeline.finished())
+
+    def test_serialize(self):
+        job_1, job_2, job_3, job_4 = (Job('spam'), Job('eggs'), Job('ham'),
+                                      Job('python'))
+        pipeline = Pipeline({job_1: job_2, job_2: (job_3, job_4)})
+        result = pipeline.serialize()
+        expected = {'graph': ((job_1.serialize(), job_2.serialize()),
+                              (job_2.serialize(), job_3.serialize()),
+                              (job_2.serialize(), job_4.serialize())),
+                    'data': None}
+        expected = tuple(expected.items())
+
+        result = dict(result)
+        expected = dict(expected)
+        result['graph'] = dict(result['graph'])
+        expected['graph'] = dict(expected['graph'])
+        self.assertEqual(result, expected)
+
+    def test_deserialize(self):
+        job_1, job_2, job_3, job_4, job_5 = (Job('spam'), Job('eggs'),
+                                             Job('ham'), Job('python'),
+                                             Job('answer_42'))
+        pipeline = Pipeline({job_1: job_2, job_2: (job_3, job_4), job_5: None})
+        serialized = pipeline.serialize()
+        new_pipeline = Pipeline.deserialize(serialized)
+        self.assertEqual(pipeline, new_pipeline)
+
+    def test_equal_not_equal_hash(self):
+        job_1, job_2, job_3, job_4 = (Job('spam'), Job('eggs'), Job('ham'),
+                                      Job('python'))
+        pipeline_1 = Pipeline({job_1: job_2, job_2: (job_3, job_4)})
+        pipeline_2 = Pipeline({job_1: job_2, job_2: (job_3, job_4)})
+        pipeline_3 = Pipeline({job_1: job_2, job_2: job_3, job_3: job_4})
+        self.assertTrue(pipeline_1 == pipeline_2)
+        self.assertTrue(pipeline_2 == pipeline_1)
+        self.assertTrue(pipeline_1 != pipeline_3)
+        self.assertTrue(pipeline_3 != pipeline_1)
+
+        my_set = set([pipeline_1, pipeline_2, pipeline_3]) #test __hash__
+        self.assertIn(pipeline_1, my_set)
+        self.assertIn(pipeline_2, my_set)
+        self.assertIn(pipeline_3, my_set)

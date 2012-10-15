@@ -28,20 +28,35 @@ class Job(object):
         #TODO: change this when add `input`
         return hash(self.worker_name) #TODO: change this when add `input`
 
+    def serialize(self):
+        #TODO: change this when add `input`
+        if self.data is not None:
+            return tuple({'worker_name': self.worker_name,
+                          'data': self.data}.items())
+        else:
+            return tuple({'worker_name': self.worker_name}.items())
+
+    @staticmethod
+    def deserialize(information):
+        information = dict(information)
+        if 'worker_name' not in information:
+            raise ValueError('`worker_name` was not specified')
+        elif 'data' not in information:
+            return Job(information['worker_name'])
+        else:
+            return Job(information['worker_name'], information['data'])
+
 
 class Pipeline(object):
     def __init__(self, pipeline, data=None):
         #TODO: should raise if pipeline is not composed of `Job`s?
         self.data = data
         self._finished_jobs = set()
-        self._original_graph = pipeline
-        self._normalize()
-        nodes = set()
-        for key, value in self._graph:
-            nodes.add(key)
-            nodes.add(value)
-        nodes.discard(None)
-        self.jobs = tuple(nodes)
+        self._original_graph = self._graph = pipeline
+        if type(pipeline) == dict:
+            self._normalize()
+        self._check_types()
+        self._define_jobs()
         self._define_starters()
         self._create_digraph()
         if not self._validate():
@@ -74,6 +89,19 @@ class Pipeline(object):
                         new_graph.append((key, value))
         self._graph = new_graph
 
+    def _check_types(self):
+        for key, value in self._graph:
+            if type(key) is not Job or type(value) not in (Job, type(None)):
+                raise ValueError('Only `Job` objects are accepted')
+
+    def _define_jobs(self):
+        nodes = set()
+        for key, value in self._graph:
+            nodes.add(key)
+            nodes.add(value)
+        nodes.discard(None)
+        self.jobs = tuple(nodes)
+
     def _define_starters(self):
         possible_starters = set()
         others = set()
@@ -91,7 +119,7 @@ class Pipeline(object):
         self._digraph = digraph
 
     def _validate(self):
-        #TODO: A -> B, A -> C, B -> C
+        #TODO: test A -> B, A -> C, B -> C
         if len(self.starters) == 0:
             return False
         if find_cycle(self._digraph):
@@ -100,6 +128,28 @@ class Pipeline(object):
 
     def to_dot(self):
         return write(self._digraph)
+
+    def serialize(self):
+        result = []
+        for key, value in self._graph:
+            serialized_key = key.serialize()
+            serialized_value = None
+            if value is not None:
+                serialized_value = value.serialize()
+            result.append((serialized_key, serialized_value))
+        return tuple({'graph': tuple(result), 'data': self.data}.items())
+
+    @staticmethod
+    def deserialize(info):
+        info = dict(info)
+        new_graph = []
+        for key, value in info['graph']:
+            deserialized_key = Job.deserialize(key)
+            deserialized_value = None
+            if value is not None:
+                deserialized_value = Job.deserialize(value)
+            new_graph.append((deserialized_key, deserialized_value))
+        return Pipeline(new_graph, data=info['data'])
 
     def add_finished_job(self, job):
         if job not in self.jobs:
@@ -122,3 +172,12 @@ class Pipeline(object):
                job not in self._finished_jobs:
                 available.add(job)
         return available
+
+    def __eq__(self, other):
+        return self._graph == other._graph
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __hash__(self):
+        return hash(self.serialize())
