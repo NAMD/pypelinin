@@ -44,10 +44,13 @@ class JobTest(unittest.TestCase):
 
         job_with_data = Job('testing', data={'python': 42, 'spam': 'eggs'})
         expected_with_data = {'worker_name': 'testing',
-                              'data': {'python': 42, 'spam': 'eggs'}}
+                              'data': tuple({'python': 42,
+                                             'spam': 'eggs'}.items())}
         expected_with_data = tuple(expected_with_data.items())
         self.assertEqual(job_with_data.serialize(), expected_with_data)
         self.assertEqual(Job.deserialize(expected_with_data), job_with_data)
+        self.assertEqual(Job.deserialize(job_with_data.serialize()).serialize(),
+                         job_with_data.serialize())
 
 class PipelineTest(unittest.TestCase):
     def test_only_accept_Job_objects(self):
@@ -379,14 +382,19 @@ class PipelineTest(unittest.TestCase):
         expected['graph'] = dict(expected['graph'])
         self.assertEqual(result, expected)
 
+        pipeline = Pipeline({job_1: job_2}, data={'python': 42})
+        self.assertEqual(pipeline, Pipeline.deserialize(pipeline.serialize()))
+
     def test_deserialize(self):
         job_1, job_2, job_3, job_4, job_5 = (Job('spam'), Job('eggs'),
                                              Job('ham'), Job('python'),
                                              Job('answer_42'))
-        pipeline = Pipeline({job_1: job_2, job_2: (job_3, job_4), job_5: None})
+        pipeline = Pipeline({job_1: job_2, job_2: (job_3, job_4), job_5: None},
+                            data={'key': 42})
         serialized = pipeline.serialize()
         new_pipeline = Pipeline.deserialize(serialized)
         self.assertEqual(pipeline, new_pipeline)
+        self.assertEqual(serialized, new_pipeline.serialize())
 
     def test_equal_not_equal_hash(self):
         job_1, job_2, job_3, job_4 = (Job('spam'), Job('eggs'), Job('ham'),
@@ -403,6 +411,15 @@ class PipelineTest(unittest.TestCase):
         self.assertIn(pipeline_1, my_set)
         self.assertIn(pipeline_2, my_set)
         self.assertIn(pipeline_3, my_set)
+
+        pipeline_with_data = Pipeline({job_1: job_2, job_2: (job_3, job_4)},
+                                      data={'python': 42})
+        pipeline_with_data_2 = Pipeline({job_1: job_2, job_2: (job_3, job_4)},
+                                        data={'python': 42})
+        self.assertTrue(pipeline_with_data == pipeline_with_data_2)
+        self.assertTrue(pipeline_with_data_2 == pipeline_with_data)
+        self.assertTrue(pipeline_1 != pipeline_with_data)
+        self.assertTrue(pipeline_with_data != pipeline_1)
 
 def run_in_parallel(function, args=tuple()):
     pool = Pool(processes=1)

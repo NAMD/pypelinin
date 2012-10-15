@@ -10,6 +10,9 @@ from pygraph.readwrite.dot import write
 from . import Client
 
 
+class Worker(object):
+    pass
+
 class Job(object):
     def __init__(self, worker_name, data=None):
         self.worker_name = worker_name
@@ -35,7 +38,7 @@ class Job(object):
         #TODO: change this when add `input`
         if self.data is not None:
             return tuple({'worker_name': self.worker_name,
-                          'data': self.data}.items())
+                          'data': tuple(self.data.items())}.items())
         else:
             return tuple({'worker_name': self.worker_name}.items())
 
@@ -47,7 +50,7 @@ class Job(object):
         elif 'data' not in information:
             return Job(information['worker_name'])
         else:
-            return Job(information['worker_name'], information['data'])
+            return Job(information['worker_name'], dict(information['data']))
 
 
 class Pipeline(object):
@@ -79,7 +82,7 @@ class Pipeline(object):
         self.sent_jobs = set()
 
     def __eq__(self, other):
-        return self._graph == other._graph
+        return self._graph == other._graph and self.data == other.data
 
     def __ne__(self, other):
         return not self.__eq__(other)
@@ -150,7 +153,10 @@ class Pipeline(object):
             if value is not None:
                 serialized_value = value.serialize()
             result.append((serialized_key, serialized_value))
-        return tuple({'graph': tuple(result), 'data': self.data}.items())
+        data = self.data
+        if data is not None:
+            data = tuple(self.data.items())
+        return tuple({'graph': tuple(result), 'data': data}.items())
 
     @staticmethod
     def _deserialize(info):
@@ -162,7 +168,10 @@ class Pipeline(object):
             if value is not None:
                 deserialized_value = Job.deserialize(value)
             new_graph.append((deserialized_key, deserialized_value))
-        return new_graph, info['data']
+        data = info['data']
+        if data is not None:
+            data = dict(data)
+        return new_graph, data
 
     @staticmethod
     def deserialize(info):
@@ -203,14 +212,14 @@ class PipelineManager(Client):
     def __init__(self, api, broadcast, poll_time=50): # milliseconds
         super(PipelineManager, self).__init__()
         self.poll_time = poll_time
-        self._pipelines = set()
+        self._pipelines = []
         self._pipeline_from_id = {}
         self.connect(api=api, broadcast=broadcast)
 
     def start(self, pipeline):
         if pipeline in self._pipelines:
             raise ValueError('This pipeline was already started')
-        self._pipelines.add(pipeline)
+        self._pipelines.append(pipeline)
         request = {'command': 'add pipeline', 'pipeline': pipeline.serialize()}
         self.send_api_request(request)
         result = self.get_api_reply()
