@@ -11,22 +11,22 @@ Architecture
 
 We have 3 daemons you need to run:
 
-- **Router**: it's the central point of communication of the network. Every
-  pipeline you need to execute should be asked to Router to add it and every
-  other daemon will communicate with Router to get a pipeline to execute and
-  other things. You can have only one Router running.
-- **Broker**: it run worker processes and execute jobs. It does not know about
-  an entire pipeline, it just receives a job to be executed, retrieve
-  needed information for that job, run the worker and then save information
-  returned by the worker. It uses a class defined by you (`StoreClass`) to
-  retrieve/save information. You should run as many Brokers as possible in your
-  cluster, to increase throughtput of job/pipeline execution.
-- **Pipeliner**: It take cares of pipelines. This daemon do not know how to
+- **Router**: the central point of communication of the network. When you need
+  to execute a pipeline, all you have to do is ask the Router to add it, and
+  every other daemon will communicate with the Router to get a pipeline for
+  execution. You can have only one Router running.
+- **Broker**: runs worker processes and executes jobs. It does not know about
+  an entire pipeline, it just receives a job to be executed, retrieves needed
+  information for that job, runs the worker and then saves information returned
+  by the worker. It uses a class defined by you (`StoreClass`) to retrieve/save
+  information. You should run as many Brokers as possible in your cluster, to
+  increase throughtput of job/pipeline execution.
+- **Pipeliner**: takes care of pipelines. This daemon do not know how to
   save/retrieve or even execute jobs, but it knows which job should be executed
   after another one in a pipeline. Router will give Pipeliner a pipeline and it
   will ask for job execution (to Router, that will be sent to Broker). You can
-  run as many Pipeliners you want (but just one can handle lots of pipelines
-  simultaneously).
+  run as many Pipeliners as you want (but one is enough to handle lots of
+  pipelines simultaneously).
 
 
 Installation
@@ -48,7 +48,7 @@ Usage
 ### Daemons
 
 For each daemon, you need to create a script that instantiates the daemon class
-and start it. Please check our
+and starts it. Please check our
 [example](https://github.com/turicas/pypelinin/tree/develop/example)
 (files `example/my_router.py`, `example/my_broker.py` and
 `example/my_pipeliner.py`).
