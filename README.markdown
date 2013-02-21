@@ -134,19 +134,19 @@ And Pipeliner:
     2012-10-15 14:13:56,477 - Pipeliner - INFO - Bad bad router, no pipeline for me.
 
 Please read the files:
-- `file_store.py` - we have a simple StoreClass which saves and retrieves
+- `file\_store.py` - we have a simple StoreClass which saves and retrieves
   information from files. You can modify it easily to use a database.
-- `workers.py` (and `test_workers.py`) - we have created 3 workers:
+- `workers.py` (and `test\_workers.py`) - we have created 3 workers:
   `Downloader`, `GetTextAndWords` and `GetLinks`. The first one is required to
   execute the last two. Each worker is basically a class that inherites from
   `pypelinin.Worker`, have an attribute `requires` and a method `process`.
-- `send_pipelines.py` - this script basically creates some `Pipeline`s and
+- `send\_pipelines.py` - this script basically creates some `Pipeline`s and
   send it to execution using a `PipelineManager` (as the example above). You
   need to run it to get the jobs executed.
 
-After executing `send_pipelines.py` you can check files
+After executing `send\_pipelines.py` you can check files
 `/tmp/{0,1,2,3,4}.data` to see the results -- these files are python
-dictionaries encoded as JSON (this was done by `file_store.SimpleFileStore`).
+dictionaries encoded as JSON (this was done by `file\_store.SimpleFileStore`).
 To read one of these files, just call this function:
 
 ```python
@@ -164,9 +164,20 @@ If you want to process more jobs/pipelines per second, you need to run more
 Brokers on another machines. To do it, you need to:
 
 - Be sure `Router` is binding to an interface that is reachable to all machines
-  that will run `Broker` and `Pipeline` (change `my_router.py`);
-- Change `my_broker.py` with new `Router` ip address/ports;
+  that will run `Broker` and `Pipeline` (change `my\_router.py`);
+- Change `my\_broker.py` with new `Router` ip address/ports;
 - Install `pypelinin` in all cluster machines;
-- Copy `my_broker.py`, `file_store.py` and `workers.py` to all
+- Copy `my\_broker.py`, `file\_store.py` and `workers.py` to all
   "Broker machines";
 - Run everything!
+
+
+Related software
+----------------
+
+- [Resque](https://github.com/defunkt/resque)
+- [Powerhose](http://powerhose.readthedocs.org/)
+- [Circus](http://circus.readthedocs.org/)
+- [Sentry](http://pypi.python.org/pypi/sentry/)
+- [Celery](http://www.celeryproject.org/)
+- [Compmake](http://andreacensi.github.com/compmake/)
