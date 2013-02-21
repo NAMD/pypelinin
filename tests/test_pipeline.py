@@ -161,7 +161,7 @@ class PipelineTest(unittest.TestCase):
         #should not have cycles
         with self.assertRaises(ValueError):
             Pipeline({Job('A'): [Job('B')], Job('B'): [Job('C')],
-                      Job('C'): [Job('B')]})._graph
+                      Job('C'): [Job('B')]})
         with self.assertRaises(ValueError):
             Pipeline({Job('A'): [Job('B')], Job('B'): [Job('C')],
                       Job('C'): [Job('D')], Job('D'): [Job('B')]})

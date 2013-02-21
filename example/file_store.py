@@ -4,6 +4,11 @@ import json
 
 
 class SimpleFileStore(object):
+    '''Sample Store based on files
+
+    This store should NOT be used in production and will only works if you have
+    only one Broker.
+    '''
     def __init__(self, **configuration):
         self.monitoring_fp = open(configuration['monitoring filename'], 'w')
 

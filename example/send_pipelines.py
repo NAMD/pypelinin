@@ -17,7 +17,7 @@ def main():
     print 'Sending pipelines...'
     my_pipelines = []
     for index, url in enumerate(urls):
-        filename = '/tmp/{}.data'.format(index)
+        filename = '/tmp/{}.dat'.format(index)
         data = json.dumps({'url': url})
         with open(filename, 'w') as fp:
             fp.write(data)
@@ -41,7 +41,7 @@ def main():
     print 'Pipeline durations (in seconds) = {}'.format(', '.join(durations))
 
     for index, url in enumerate(urls):
-        filename = '/tmp/{}.data'.format(index)
+        filename = '/tmp/{}.dat'.format(index)
         with open(filename) as fp:
             data = json.loads(fp.read())
         print ('  url={url}, download_duration={download_duration}, '

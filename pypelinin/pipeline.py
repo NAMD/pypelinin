@@ -19,7 +19,7 @@ class Job(object):
         self.data = data
 
     def __repr__(self):
-       #TODO: change this when add `input`
+        #TODO: change this when add `input`
         return 'Job({})'.format(repr(self.worker_name))
 
     def __eq__(self, other):
@@ -55,7 +55,6 @@ class Job(object):
 
 class Pipeline(object):
     def __init__(self, pipeline, data=None):
-        #TODO: should raise if pipeline is not composed of `Job`s?
         self.data = data
         self.id = None
         self._finished_jobs = set()
@@ -135,7 +134,6 @@ class Pipeline(object):
         self._digraph = digraph
 
     def _validate(self):
-        #TODO: test A -> B, A -> C, B -> C
         if len(self.starters) == 0:
             return False
         if find_cycle(self._digraph):
