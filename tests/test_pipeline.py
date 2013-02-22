@@ -12,6 +12,9 @@ import zmq
 from pypelinin import Job, Pipeline, PipelineManager, PipelineForPipeliner
 
 
+API_ADDRESS = 'tcp://127.0.0.1:5558'
+BROADCAST_ADDRESS = 'tcp://127.0.0.1:5559'
+
 class JobTest(unittest.TestCase):
     def test_worker_name(self):
         self.assertEqual(Job('ABC').worker_name, 'ABC')
@@ -429,8 +432,8 @@ def run_in_parallel(function, args=tuple()):
 def send_pipeline():
     pipeline = Pipeline({Job(u'worker_1'): Job(u'worker_2'),
                          Job(u'worker_2'): Job(u'worker_3')})
-    pipeline_manager = PipelineManager(api='tcp://localhost:5550',
-                                       broadcast='tcp://localhost:5551')
+    pipeline_manager = PipelineManager(api=API_ADDRESS,
+                                       broadcast=BROADCAST_ADDRESS)
     before = pipeline.id
     pipeline_id = pipeline_manager.start(pipeline)
     pipeline_manager.disconnect()
@@ -441,8 +444,8 @@ def send_pipeline_and_wait_finished():
 
     pipeline = Pipeline({Job(u'worker_1'): Job(u'worker_2'),
                          Job(u'worker_2'): Job(u'worker_3')})
-    pipeline_manager = PipelineManager(api='tcp://localhost:5550',
-                                       broadcast='tcp://localhost:5551')
+    pipeline_manager = PipelineManager(api=API_ADDRESS,
+                                       broadcast=BROADCAST_ADDRESS)
     pipeline_manager.start(pipeline)
     start = time.time()
     while not pipeline_manager.finished(pipeline):
@@ -455,8 +458,8 @@ def verify_PipelineManager_exceptions():
     pipeline_1 = Pipeline({Job(u'worker_1'): Job(u'worker_2'),
                            Job(u'worker_2'): Job(u'worker_3')})
     pipeline_2 = Pipeline({Job(u'worker_1'): Job(u'worker_2')})
-    pipeline_manager = PipelineManager(api='tcp://localhost:5550',
-                                       broadcast='tcp://localhost:5551')
+    pipeline_manager = PipelineManager(api=API_ADDRESS,
+                                       broadcast=BROADCAST_ADDRESS)
     pipeline_manager.start(pipeline_1)
     raise_1, raise_2 = False, False
     try:
@@ -486,8 +489,8 @@ class PipelineManagerTest(unittest.TestCase):
     def start_router_sockets(self):
         self.api = self.context.socket(zmq.REP)
         self.broadcast = self.context.socket(zmq.PUB)
-        self.api.bind('tcp://127.0.0.1:5550')
-        self.broadcast.bind('tcp://127.0.0.1:5551')
+        self.api.bind(API_ADDRESS)
+        self.broadcast.bind(BROADCAST_ADDRESS)
 
     def close_sockets(self):
         self.api.close()
