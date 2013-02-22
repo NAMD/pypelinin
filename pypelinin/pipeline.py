@@ -212,26 +212,27 @@ class PipelineManager(Client):
     def __init__(self, api, broadcast, poll_time=50): # milliseconds
         super(PipelineManager, self).__init__()
         self.poll_time = poll_time
-        self._pipelines = []
-        self._pipeline_from_id = {}
+        self._pipelines = {}
+        self.started_pipelines = 0
+        self.finished_pipelines = 0
         self.connect(api=api, broadcast=broadcast)
 
     def start(self, pipeline):
-        if pipeline in self._pipelines:
+        if pipeline.id is not None:
             raise ValueError('This pipeline was already started')
-        self._pipelines.append(pipeline)
         request = {'command': 'add pipeline', 'pipeline': pipeline.serialize()}
         self.send_api_request(request)
         result = self.get_api_reply()
+        pipeline.started_at = time()
         pipeline_id = str(result['pipeline id'])
+        self.started_pipelines += 1
+        self.broadcast_subscribe('pipeline finished: id=' + pipeline_id)
         pipeline.id = pipeline_id
         pipeline.finished = False
-        self._pipeline_from_id[pipeline_id] = pipeline
-        pipeline.started_at = time()
-        self.broadcast_subscribe('pipeline finished: id=' + pipeline_id)
+        self._pipelines[pipeline_id] = pipeline
         return pipeline_id
 
-    def _update_broadcast(self):
+    def update(self):
         while self.broadcast_poll(self.poll_time):
             message = self.broadcast_receive()
             if message.startswith('pipeline finished: '):
@@ -241,14 +242,18 @@ class PipelineManager(Client):
                     duration = float(data[1].split('=')[1])
                 except (IndexError, ValueError):
                     continue
-                pipeline = self._pipeline_from_id[pipeline_id]
+                try:
+                    pipeline = self._pipelines[pipeline_id]
+                except IndexError:
+                    return
                 pipeline.duration = duration
                 pipeline.finished = True
+                self.finished_pipelines += 1
                 self.broadcast_unsubscribe(message)
 
     def finished(self, pipeline):
-        if pipeline not in self._pipelines:
+        if pipeline.id is None or pipeline.id not in self._pipelines:
             raise ValueError('This pipeline is not being managed by this '
                              'PipelineMager')
-        self._update_broadcast()
+        self.update()
         return pipeline.finished
