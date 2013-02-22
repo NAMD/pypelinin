@@ -245,13 +245,15 @@ class PipelineManager(Client):
                 try:
                     pipeline = self._pipelines[pipeline_id]
                 except IndexError:
-                    return
+                    continue
                 pipeline.duration = duration
                 pipeline.finished = True
                 self.finished_pipelines += 1
-                self.broadcast_unsubscribe(message)
+                self.broadcast_unsubscribe('pipeline finished: id=' + \
+                                           pipeline_id)
 
     def finished(self, pipeline):
+        '''DEPRECATED'''
         if pipeline.id is None or pipeline.id not in self._pipelines:
             raise ValueError('This pipeline is not being managed by this '
                              'PipelineMager')
