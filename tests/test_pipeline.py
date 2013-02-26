@@ -453,7 +453,7 @@ def send_pipeline_and_wait_finished():
     assert pipeline_manager.finished_pipelines == 0
     start = time()
     while pipeline_manager.finished_pipelines < pipeline_manager.started_pipelines:
-        pipeline_manager.update()
+        pipeline_manager.update(0.5)
     end = time()
     pipeline_manager.disconnect()
     return {'duration': pipeline.duration, 'real_duration': end - start,

@@ -44,7 +44,7 @@ def main():
     total_pipelines = pipeline_manager.started_pipelines
     finished_pipelines = 0
     while finished_pipelines < total_pipelines:
-        pipeline_manager.update()
+        pipeline_manager.update(0.5)
         finished_pipelines = pipeline_manager.finished_pipelines
         percentual = 100 * (float(finished_pipelines) / total_pipelines)
         sys.stdout.write('\rFinished pipelines: {}/{} ({:5.2f}%)'\

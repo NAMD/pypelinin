@@ -232,9 +232,19 @@ class PipelineManager(Client):
         self._pipelines[pipeline_id] = pipeline
         return pipeline_id
 
-    def update(self):
-        #TODO: add a maximum timeout
-        while self.broadcast_poll(self.poll_time):
+    def update(self, timeout):
+        '''Verify if some pipelines have finished processing
+
+        If there is any pipeline finished, it'll update `PipelineManager`'s
+        `finished_pipelines` attribute and will set `finished` to `True` on
+        each finished `Pipeline` object.
+
+        You must provide `timeout`, the maximum time this method will hang
+        waiting for 'finished pipeline' messages from Router.
+        '''
+        start_time = time()
+        while self.broadcast_poll(self.poll_time) and \
+              time() - start_time < timeout:
             message = self.broadcast_receive()
             if message.startswith('pipeline finished: '):
                 try:
