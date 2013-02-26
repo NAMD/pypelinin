@@ -233,6 +233,7 @@ class PipelineManager(Client):
         return pipeline_id
 
     def update(self):
+        #TODO: add a maximum timeout
         while self.broadcast_poll(self.poll_time):
             message = self.broadcast_receive()
             if message.startswith('pipeline finished: '):
@@ -259,3 +260,8 @@ class PipelineManager(Client):
                              'PipelineMager')
         self.update()
         return pipeline.finished
+
+    @property
+    def pipelines(self):
+        for pipeline_id, pipeline in self._pipelines.iteritems():
+            yield pipeline

@@ -548,3 +548,20 @@ class PipelineManagerTest(unittest.TestCase):
         self.assertTrue(received['raise_2'])
         started_at = received['started_at']
         self.assertTrue(start_time - 0.1 <= started_at <= start_time + 0.1)
+
+    def test_should_return_all_pipelines(self):
+        pipeline_manager = PipelineManager(api=API_ADDRESS,
+                                           broadcast=BROADCAST_ADDRESS)
+        pipeline_manager.send_api_request = lambda x: None
+        pipeline_manager.get_api_reply = lambda: {'pipeline id': uuid4().hex}
+        iterations = 10
+        pipelines = []
+        for i in range(iterations):
+            pipeline = Pipeline({Job(u'worker_1'): Job(u'worker_2'),
+                                 Job(u'worker_2'): Job(u'worker_3')},
+                                data={'index': i})
+            pipeline_manager.start(pipeline)
+            pipelines.append(pipeline)
+        self.assertEqual(set(pipeline_manager.pipelines), set(pipelines))
+
+    #TODO: test .update
