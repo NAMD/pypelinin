@@ -45,7 +45,7 @@ And in the other one:
     ./run-benchmark.sh 0.1.0
 
 After `run-benchmark.sh` finishes running, you should go to the terminal
-`run-benchmarks.sh` is running and press `Ctrl-C`.
+`run-daemons.sh` is running and press `Ctrl-c` to kill all daemons.
 
 
 ## Test version 'fixed'
@@ -59,7 +59,7 @@ And in the other one:
     ./run-benchmark.sh fixed
 
 After `run-benchmark.sh` finishes running, you should go to the terminal
-`run-benchmarks.sh` is running and press `Ctrl-C`.
+`run-daemons.sh` is running and press `Ctrl-c` to kill all daemons.
 
 
 ## Plotting graphs
