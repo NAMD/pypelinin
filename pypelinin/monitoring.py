@@ -20,7 +20,7 @@ def get_outgoing_ip((host, port)):
 def get_host_info():
     """Return a ``dict`` with system's information
 
-    `Example of its output <https://gist.github.com/gists/2891134>`_
+    `Example of its output <https://gist.github.com/turicas/2891134>`_
     """
     memory_usage = psutil.phymem_usage()
     cached_memory = psutil.cached_phymem()

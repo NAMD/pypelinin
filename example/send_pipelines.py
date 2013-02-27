@@ -31,7 +31,7 @@ def main():
     start_time = time()
     my_pipelines = []
     for index, url in enumerate(urls):
-        filename = '/tmp/{}.data'.format(index)
+        filename = '/tmp/{}.dat'.format(index)
         data = json.dumps({'url': url})
         with open(filename, 'w') as fp:
             fp.write(data)
@@ -62,7 +62,7 @@ def main():
 
     print 'Some data saved by store:'
     for index, url in enumerate(urls):
-        filename = '/tmp/{}.data'.format(index)
+        filename = '/tmp/{}.dat'.format(index)
         with open(filename) as fp:
             data = json.loads(fp.read())
         print ('  url={url}, download_duration={download_duration}, '
