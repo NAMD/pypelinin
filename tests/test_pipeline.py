@@ -452,6 +452,7 @@ def send_pipeline_and_wait_finished():
     assert pipeline_manager.started_pipelines == 10
     assert pipeline_manager.finished_pipelines == 0
     start = time()
+    pipeline_manager.finished(pipelines[0]) # only for testing this method
     while pipeline_manager.finished_pipelines < pipeline_manager.started_pipelines:
         pipeline_manager.update(0.5)
     end = time()

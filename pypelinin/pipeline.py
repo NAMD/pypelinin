@@ -268,7 +268,7 @@ class PipelineManager(Client):
         if pipeline.id is None or pipeline.id not in self._pipelines:
             raise ValueError('This pipeline is not being managed by this '
                              'PipelineMager')
-        self.update()
+        self.update(self.poll_time * 10)
         return pipeline.finished
 
     @property
