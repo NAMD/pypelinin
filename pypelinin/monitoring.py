@@ -7,6 +7,9 @@ import psutil
 
 
 #TODO: test this module!
+MEMORY_KEYS = ('active', 'available', 'buffers', 'cached', 'free', 'inactive',
+               'percent', 'total', 'used')
+SWAP_KEYS = ('total', 'used', 'free', 'percent', 'sin', 'sout')
 
 def get_outgoing_ip((host, port)):
     """Connect to remote host/port, return local IP used by OS"""
@@ -22,16 +25,10 @@ def get_host_info():
 
     `Example of its output <https://gist.github.com/turicas/2891134>`_
     """
-    memory_usage = psutil.phymem_usage()
-    cached_memory = psutil.cached_phymem()
-    buffered_memory = psutil.phymem_buffers()
-    real_used = memory_usage.used - buffered_memory - cached_memory
-    real_free = memory_usage.total - real_used
-    percent = 100 * (float(memory_usage.used) / memory_usage.total)
-    real_percent = 100 * (float(real_used) / memory_usage.total)
-    virtual_used = psutil.used_virtmem()
-    virtual_free = psutil.avail_virtmem()
-    virtual_total = virtual_used + virtual_free
+    memory_data = psutil.virtual_memory()
+    memory_info = {key: getattr(memory_data, key) for key in MEMORY_KEYS}
+    swap_data = psutil.swap_memory()
+    swap_info = {key: getattr(swap_data, key) for key in SWAP_KEYS}
     info_per_nic = psutil.network_io_counters(pernic=True)
     network_info = {}
     for key, value in info_per_nic.iteritems():
@@ -49,18 +46,8 @@ def get_host_info():
                                           'total used bytes': disk_usage.used,
                                           'total free bytes': disk_usage.free,
                                           'percent used': disk_usage.percent,}
-    return {'memory': {'free': memory_usage.free,
-                       'total': memory_usage.total,
-                       'used': memory_usage.used,
-                       'cached': cached_memory,
-                       'buffers': buffered_memory,
-                       'real used': real_used,
-                       'real free': real_free,
-                       'percent': percent,
-                       'real percent': real_percent,
-                       'total virtual': virtual_total,
-                       'used virtual': virtual_used,
-                       'free virtual': virtual_free,},
+    return {'memory': memory_info,
+            'swap': swap_info,
             'cpu': {'number of cpus': psutil.NUM_CPUS,
                     'cpu percent': psutil.cpu_percent(),},
             'network': {'interfaces': network_info,},
@@ -82,12 +69,13 @@ def get_process_info(process_id):
 
 
 if __name__ == '__main__':
+    from os import getpid
     from pprint import pprint
     from time import time
-    from os import getpid
+
 
     host_info = get_host_info()
-    host_info['network']['cluster ip'] = get_outgoing_ip(('localhost', 80))
+    host_info['network']['cluster ip'] = '127.0.0.1'
     broker_info = get_process_info(getpid())
     broker_info['type'] = 'broker'
     broker_info['active workers'] = 4
