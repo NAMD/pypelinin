@@ -3,6 +3,8 @@
 import unittest
 
 from multiprocessing import Pool
+from os import unlink
+from tempfile import NamedTemporaryFile
 from textwrap import dedent
 from time import sleep, time
 from uuid import uuid4
@@ -169,26 +171,36 @@ class PipelineTest(unittest.TestCase):
             Pipeline({Job('A'): [Job('B')], Job('B'): [Job('C')],
                       Job('C'): [Job('D')], Job('D'): [Job('B')]})
 
-    def test_dot(self):
-        result = Pipeline({(Job('A'), Job('B'), Job('C')): [Job('D')],
-                           Job('E'): (Job('B'), Job('F'))}).to_dot().strip()
+    def test_str_and_save_dot(self):
+        pipeline = Pipeline({(Job('A'), Job('B'), Job('C')): [Job('D')],
+                             Job('E'): (Job('B'), Job('F'))})
+        result = str(pipeline)
         expected = dedent('''
         digraph graphname {
-        "Job('A')";
-        "Job('C')";
-        "Job('B')";
-        "Job('E')";
-        "Job('D')";
-        "Job('F')";
-        "Job('A')" -> "Job('D')";
-        "Job('C')" -> "Job('D')";
-        "Job('B')" -> "Job('D')";
-        "Job('E')" -> "Job('B')";
-        "Job('E')" -> "Job('F')";
+        "A";
+        "C";
+        "B";
+        "E";
+        "D";
+        "F";
+
+        "A" -> "D";
+        "B" -> "D";
+        "C" -> "D";
+        "E" -> "B";
+        "E" -> "F";
         }
         ''').strip()
 
         self.assertEqual(result, expected)
+        temp_file = NamedTemporaryFile(delete=False)
+        temp_file.close()
+        pipeline.save_dot(temp_file.name)
+        temp_file = open(temp_file.name)
+        file_contents = temp_file.read()
+        temp_file.close()
+        self.assertEqual(expected + '\n', file_contents)
+        unlink(temp_file.name)
 
     def test_pipeline_should_propagate_data_among_jobs(self):
         job_1 = Job('w1')
