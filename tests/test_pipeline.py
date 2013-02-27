@@ -193,12 +193,12 @@ class PipelineTest(unittest.TestCase):
         result = str(pipeline)
         expected = dedent('''
         digraph graphname {
-        "A";
-        "C";
-        "B";
+            "A";
+            "C";
+            "B";
 
-        "A" -> "B";
-        "C" -> "(None)";
+            "A" -> "B";
+            "C" -> "(None)";
         }
         ''').strip()
         self.assertEqual(result, expected)
@@ -208,18 +208,18 @@ class PipelineTest(unittest.TestCase):
         result = str(pipeline)
         expected = dedent('''
         digraph graphname {
-        "A";
-        "C";
-        "B";
-        "E";
-        "D";
-        "F";
+            "A";
+            "C";
+            "B";
+            "E";
+            "D";
+            "F";
 
-        "A" -> "D";
-        "B" -> "D";
-        "C" -> "D";
-        "E" -> "B";
-        "E" -> "F";
+            "A" -> "D";
+            "B" -> "D";
+            "C" -> "D";
+            "E" -> "B";
+            "E" -> "F";
         }
         ''').strip()
 

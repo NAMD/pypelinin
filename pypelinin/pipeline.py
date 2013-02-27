@@ -165,16 +165,16 @@ class Pipeline(object):
                 return obj.worker_name
             else:
                 return '(None)'
-        nodes = u';\n'.join([u'"{}"'.format(job.worker_name) \
-                             for job in self.jobs])
-        edges = u';\n'.join([u'"{}" -> "{}"'.format(represent(job1),
-                                                    represent(job2)) \
-                             for job1, job2 in self._graph])
+        nodes = u';\n    '.join([u'"{}"'.format(job.worker_name) \
+                                 for job in self.jobs])
+        edges = u';\n    '.join([u'"{}" -> "{}"'.format(represent(job1),
+                                                        represent(job2)) \
+                                 for job1, job2 in self._graph])
         return dedent(u'''
         digraph graphname {{
-        {};
+            {};
 
-        {};
+            {};
         }}''').strip().format(nodes, edges)
 
     def __str__(self):
