@@ -13,7 +13,7 @@ from pypelinin import PipelineManager, Pipeline, Job
 
 ROUTER_API = 'tcp://localhost:12345'
 ROUTER_BROADCAST = 'tcp://localhost:12346'
-NUMBER_OF_PIPELINES = 1000
+NUMBER_OF_PIPELINES = 30000
 UPDATE_INTERVAL = 100
 
 def main():

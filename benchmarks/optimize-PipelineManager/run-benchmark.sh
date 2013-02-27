@@ -14,4 +14,4 @@ source $VENV_PATH/bin/activate
 echo "### Running send_pipelines for $(basename $VENV_PATH)..."
 echo
 
-python "$SCRIPT_PATH/send_pipelines.py" $1
+time python "$SCRIPT_PATH/send_pipelines.py" $1
