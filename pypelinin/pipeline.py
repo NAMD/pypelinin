@@ -264,7 +264,7 @@ class PipelineManager(Client):
                                            pipeline_id)
 
     def finished(self, pipeline):
-        '''DEPRECATED'''
+        '''This method is deprecated. You should use `update` instead.'''
         if pipeline.id is None or pipeline.id not in self._pipelines:
             raise ValueError('This pipeline is not being managed by this '
                              'PipelineMager')
@@ -273,5 +273,4 @@ class PipelineManager(Client):
 
     @property
     def pipelines(self):
-        for pipeline_id, pipeline in self._pipelines.iteritems():
-            yield pipeline
+        return self._pipelines.itervalues()
