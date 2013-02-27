@@ -17,7 +17,10 @@ class Job(object):
 
     def __repr__(self):
         #TODO: change this when add `input`
-        return 'Job({})'.format(repr(self.worker_name))
+        data = ''
+        if self.data is not None:
+            data = ', data=...'
+        return '<Job worker={}{}>'.format(self.worker_name, data)
 
     def __eq__(self, other):
         #TODO: change this when add `input`
@@ -85,6 +88,13 @@ class Pipeline(object):
     def __hash__(self):
         return hash(self.serialize())
 
+    def __repr__(self):
+        data = ''
+        if self.data is not None:
+            data = ', data=...'
+        jobs = ', '.join([job.worker_name for job in self.jobs])
+        return '<Pipeline: {}{}>'.format(jobs, data)
+
     def _normalize(self):
         new_graph = []
         for keys, values in self._original_graph.items():
@@ -150,10 +160,15 @@ class Pipeline(object):
         return len(self.starters) != 0 and not self.has_cycle()
 
     def __unicode__(self):
+        def represent(obj):
+            if type(obj) is Job:
+                return obj.worker_name
+            else:
+                return '(None)'
         nodes = u';\n'.join([u'"{}"'.format(job.worker_name) \
                              for job in self.jobs])
-        edges = u';\n'.join([u'"{}" -> "{}"'.format(job1.worker_name,
-                                                    job2.worker_name) \
+        edges = u';\n'.join([u'"{}" -> "{}"'.format(represent(job1),
+                                                    represent(job2)) \
                              for job1, job2 in self._graph])
         return dedent(u'''
         digraph graphname {{
@@ -242,6 +257,10 @@ class PipelineManager(Client):
         self.started_pipelines = 0
         self.finished_pipelines = 0
         self.connect(api=api, broadcast=broadcast)
+
+    def __repr__(self):
+        return '<PipelineManager: {} submitted, {} finished>'\
+                .format(self.started_pipelines, self.finished_pipelines)
 
     def start(self, pipeline):
         if pipeline.id is not None:
