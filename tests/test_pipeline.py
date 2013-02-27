@@ -2,15 +2,18 @@
 
 import unittest
 
-from textwrap import dedent
 from multiprocessing import Pool
-from uuid import uuid4
+from textwrap import dedent
 from time import sleep, time
+from uuid import uuid4
 
 import zmq
 
 from pypelinin import Job, Pipeline, PipelineManager, PipelineForPipeliner
 
+
+API_ADDRESS = 'tcp://127.0.0.1:5558'
+BROADCAST_ADDRESS = 'tcp://127.0.0.1:5559'
 
 class JobTest(unittest.TestCase):
     def test_worker_name(self):
@@ -429,34 +432,41 @@ def run_in_parallel(function, args=tuple()):
 def send_pipeline():
     pipeline = Pipeline({Job(u'worker_1'): Job(u'worker_2'),
                          Job(u'worker_2'): Job(u'worker_3')})
-    pipeline_manager = PipelineManager(api='tcp://localhost:5550',
-                                       broadcast='tcp://localhost:5551')
+    pipeline_manager = PipelineManager(api=API_ADDRESS,
+                                       broadcast=BROADCAST_ADDRESS)
     before = pipeline.id
     pipeline_id = pipeline_manager.start(pipeline)
     pipeline_manager.disconnect()
     return before, pipeline_id, pipeline.id
 
 def send_pipeline_and_wait_finished():
-    import time
-
-    pipeline = Pipeline({Job(u'worker_1'): Job(u'worker_2'),
-                         Job(u'worker_2'): Job(u'worker_3')})
-    pipeline_manager = PipelineManager(api='tcp://localhost:5550',
-                                       broadcast='tcp://localhost:5551')
-    pipeline_manager.start(pipeline)
-    start = time.time()
-    while not pipeline_manager.finished(pipeline):
-        time.sleep(0.1)
-    end = time.time()
+    pipeline_manager = PipelineManager(api=API_ADDRESS,
+                                       broadcast=BROADCAST_ADDRESS)
+    pipelines = []
+    for i in range(10):
+        pipeline = Pipeline({Job(u'worker_1'): Job(u'worker_2'),
+                             Job(u'worker_2'): Job(u'worker_3')},
+                            data={'index': i})
+        pipeline_manager.start(pipeline)
+        pipelines.append(pipeline)
+    assert pipeline_manager.started_pipelines == 10
+    assert pipeline_manager.finished_pipelines == 0
+    start = time()
+    pipeline_manager.finished(pipelines[0]) # only for testing this method
+    while pipeline_manager.finished_pipelines < pipeline_manager.started_pipelines:
+        pipeline_manager.update(0.5)
+    end = time()
     pipeline_manager.disconnect()
-    return {'duration': pipeline.duration, 'real_duration': end - start}
+    return {'duration': pipeline.duration, 'real_duration': end - start,
+            'finished_pipelines': pipeline_manager.finished_pipelines,
+            'started_pipelines': pipeline_manager.started_pipelines}
 
 def verify_PipelineManager_exceptions():
     pipeline_1 = Pipeline({Job(u'worker_1'): Job(u'worker_2'),
                            Job(u'worker_2'): Job(u'worker_3')})
     pipeline_2 = Pipeline({Job(u'worker_1'): Job(u'worker_2')})
-    pipeline_manager = PipelineManager(api='tcp://localhost:5550',
-                                       broadcast='tcp://localhost:5551')
+    pipeline_manager = PipelineManager(api=API_ADDRESS,
+                                       broadcast=BROADCAST_ADDRESS)
     pipeline_manager.start(pipeline_1)
     raise_1, raise_2 = False, False
     try:
@@ -486,8 +496,8 @@ class PipelineManagerTest(unittest.TestCase):
     def start_router_sockets(self):
         self.api = self.context.socket(zmq.REP)
         self.broadcast = self.context.socket(zmq.PUB)
-        self.api.bind('tcp://127.0.0.1:5550')
-        self.broadcast.bind('tcp://127.0.0.1:5551')
+        self.api.bind(API_ADDRESS)
+        self.broadcast.bind(BROADCAST_ADDRESS)
 
     def close_sockets(self):
         self.api.close()
@@ -520,17 +530,23 @@ class PipelineManagerTest(unittest.TestCase):
 
     def test_should_subscribe_to_broadcast_to_wait_for_finished_pipeline(self):
         result, pool = run_in_parallel(send_pipeline_and_wait_finished)
-        message = self.api.recv_json()
-        pipeline_id = uuid4().hex
-        self.api.send_json({'answer': 'pipeline accepted',
-                            'pipeline id': pipeline_id})
+        pipeline_ids = []
+        for i in range(10):
+            message = self.api.recv_json()
+            pipeline_id = uuid4().hex
+            self.api.send_json({'answer': 'pipeline accepted',
+                                'pipeline id': pipeline_id})
+            pipeline_ids.append(pipeline_id)
         sleep(1)
-        self.broadcast.send('pipeline finished: id={}, duration=1.23456'\
-                            .format(pipeline_id))
+        for pipeline_id in pipeline_ids:
+            self.broadcast.send('pipeline finished: id={}, duration=1.23456'\
+                                .format(pipeline_id))
         received = result.get()
         pool.terminate()
         self.assertEqual(received['duration'], 1.23456)
         self.assertTrue(received['real_duration'] > 1)
+        self.assertTrue(received['finished_pipelines'], 10)
+        self.assertTrue(received['started_pipelines'], 10)
 
     def test_should_raise_ValueError_in_some_cases(self):
         result, pool = run_in_parallel(verify_PipelineManager_exceptions)
@@ -545,3 +561,18 @@ class PipelineManagerTest(unittest.TestCase):
         self.assertTrue(received['raise_2'])
         started_at = received['started_at']
         self.assertTrue(start_time - 0.1 <= started_at <= start_time + 0.1)
+
+    def test_should_return_all_pipelines(self):
+        pipeline_manager = PipelineManager(api=API_ADDRESS,
+                                           broadcast=BROADCAST_ADDRESS)
+        pipeline_manager.send_api_request = lambda x: None
+        pipeline_manager.get_api_reply = lambda: {'pipeline id': uuid4().hex}
+        iterations = 10
+        pipelines = []
+        for i in range(iterations):
+            pipeline = Pipeline({Job(u'worker_1'): Job(u'worker_2'),
+                                 Job(u'worker_2'): Job(u'worker_3')},
+                                data={'index': i})
+            pipeline_manager.start(pipeline)
+            pipelines.append(pipeline)
+        self.assertEqual(set(pipeline_manager.pipelines), set(pipelines))
