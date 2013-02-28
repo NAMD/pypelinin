@@ -22,8 +22,8 @@ def get_host_info():
 
     `Example of its output <https://gist.github.com/turicas/2891134>`_
     """
-    memory_info = psutil.virtual_memory()._asdict()
-    swap_info = psutil.swap_memory()._asdict()
+    memory_info = dict(psutil.virtual_memory()._asdict())
+    swap_info = dict(psutil.swap_memory()._asdict())
     info_per_nic = psutil.network_io_counters(pernic=True)
     network_info = {}
     for key, value in info_per_nic.iteritems():
