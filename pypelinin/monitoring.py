@@ -7,9 +7,6 @@ import psutil
 
 
 #TODO: test this module!
-MEMORY_KEYS = ('active', 'available', 'buffers', 'cached', 'free', 'inactive',
-               'percent', 'total', 'used')
-SWAP_KEYS = ('total', 'used', 'free', 'percent', 'sin', 'sout')
 
 def get_outgoing_ip((host, port)):
     """Connect to remote host/port, return local IP used by OS"""
@@ -26,9 +23,16 @@ def get_host_info():
     `Example of its output <https://gist.github.com/turicas/2891134>`_
     """
     memory_data = psutil.virtual_memory()
-    memory_info = {key: getattr(memory_data, key) for key in MEMORY_KEYS}
+    memory_info = {key: getattr(memory_data, key) \
+                   for key in dir(memory_data) \
+                       if not key.startswith('_') and \
+                          key not in ('index', 'count')}
     swap_data = psutil.swap_memory()
     swap_info = {key: getattr(swap_data, key) for key in SWAP_KEYS}
+    swap_info = {key: getattr(swap_data, key) \
+                 for key in dir(swap_data) \
+                     if not key.startswith('_') and \
+                        key not in ('index', 'count')}
     info_per_nic = psutil.network_io_counters(pernic=True)
     network_info = {}
     for key, value in info_per_nic.iteritems():
