@@ -3,6 +3,8 @@
 import unittest
 
 from multiprocessing import Pool
+from os import unlink
+from tempfile import NamedTemporaryFile
 from textwrap import dedent
 from time import sleep, time
 from uuid import uuid4
@@ -23,7 +25,9 @@ class JobTest(unittest.TestCase):
         self.assertEqual(Job('ABC').data, None)
 
     def test_repr(self):
-        self.assertEqual(repr(Job('ABC')), "Job('ABC')")
+        self.assertEqual(repr(Job('ABC')), "<Job worker=ABC>")
+        self.assertEqual(repr(Job('ABC', data={'a': 'b'})),
+                         "<Job worker=ABC, data=...>")
 
     def test_equal_not_equal_and_hash(self):
         job_1 = Job('qwe')
@@ -59,6 +63,21 @@ class PipelineTest(unittest.TestCase):
     def test_only_accept_Job_objects(self):
         with self.assertRaises(ValueError):
             Pipeline({'test': 123})
+
+    def test_repr(self):
+        result = repr(Pipeline({Job('A'): Job('B'), Job('B'): Job('C')}))
+        expected_list = []
+        expected_list.append('<Pipeline: A, B, C>')
+        expected_list.append('<Pipeline: A, C, B>')
+        expected_list.append('<Pipeline: B, A, C>')
+        expected_list.append('<Pipeline: B, C, A>')
+        expected_list.append('<Pipeline: C, A, B>')
+        expected_list.append('<Pipeline: C, B, A>')
+        self.assertIn(result, expected_list)
+
+        result = repr(Pipeline({Job('A'): None}, data={'a': 'test'}))
+        expected = '<Pipeline: A, data=...>'
+        self.assertEqual(expected, result)
 
     def test_jobs(self):
         result = Pipeline({Job('A'): [Job('B')],
@@ -169,26 +188,50 @@ class PipelineTest(unittest.TestCase):
             Pipeline({Job('A'): [Job('B')], Job('B'): [Job('C')],
                       Job('C'): [Job('D')], Job('D'): [Job('B')]})
 
-    def test_dot(self):
-        result = Pipeline({(Job('A'), Job('B'), Job('C')): [Job('D')],
-                           Job('E'): (Job('B'), Job('F'))}).to_dot().strip()
+    def test_str_and_save_dot(self):
+        pipeline = Pipeline({Job('A'): Job('B'), Job('C'): None})
+        result = str(pipeline)
         expected = dedent('''
         digraph graphname {
-        "Job('A')";
-        "Job('C')";
-        "Job('B')";
-        "Job('E')";
-        "Job('D')";
-        "Job('F')";
-        "Job('A')" -> "Job('D')";
-        "Job('C')" -> "Job('D')";
-        "Job('B')" -> "Job('D')";
-        "Job('E')" -> "Job('B')";
-        "Job('E')" -> "Job('F')";
+            "A";
+            "C";
+            "B";
+
+            "A" -> "B";
+            "C" -> "(None)";
+        }
+        ''').strip()
+        self.assertEqual(result, expected)
+
+        pipeline = Pipeline({(Job('A'), Job('B'), Job('C')): [Job('D')],
+                             Job('E'): (Job('B'), Job('F'))})
+        result = str(pipeline)
+        expected = dedent('''
+        digraph graphname {
+            "A";
+            "C";
+            "B";
+            "E";
+            "D";
+            "F";
+
+            "A" -> "D";
+            "B" -> "D";
+            "C" -> "D";
+            "E" -> "B";
+            "E" -> "F";
         }
         ''').strip()
 
         self.assertEqual(result, expected)
+        temp_file = NamedTemporaryFile(delete=False)
+        temp_file.close()
+        pipeline.save_dot(temp_file.name)
+        temp_file = open(temp_file.name)
+        file_contents = temp_file.read()
+        temp_file.close()
+        self.assertEqual(expected + '\n', file_contents)
+        unlink(temp_file.name)
 
     def test_pipeline_should_propagate_data_among_jobs(self):
         job_1 = Job('w1')
@@ -502,6 +545,35 @@ class PipelineManagerTest(unittest.TestCase):
     def close_sockets(self):
         self.api.close()
         self.broadcast.close()
+
+    def test_repr(self):
+        pipeline_manager = PipelineManager(api=API_ADDRESS,
+                                           broadcast=BROADCAST_ADDRESS)
+        pipeline_ids = [uuid4().hex for i in range(10)]
+        pipeline_ids_copy = pipeline_ids[:]
+        pipeline_manager.send_api_request = lambda x: None
+        pipeline_manager.get_api_reply = \
+                lambda: {'pipeline id': pipeline_ids.pop()}
+        pipelines = [Pipeline({Job('A', data={'index': i}): Job('B')}) \
+                     for i in range(10)]
+        for pipeline in pipelines:
+            pipeline_manager.start(pipeline)
+
+        result = repr(pipeline_manager)
+        self.assertEqual(result, '<PipelineManager: 10 submitted, 0 finished>')
+
+        messages = ['pipeline finished: id={}, duration=0.1'.format(pipeline_id)
+                    for pipeline_id in pipeline_ids_copy[:3]]
+        poll = [False, True, True, True]
+        def new_poll(timeout):
+            return poll.pop()
+        def new_broadcast_receive():
+            return messages.pop()
+        pipeline_manager.broadcast_poll = new_poll
+        pipeline_manager.broadcast_receive = new_broadcast_receive
+        pipeline_manager.update(0.1)
+        result = repr(pipeline_manager)
+        self.assertEqual(result, '<PipelineManager: 10 submitted, 3 finished>')
 
     def test_should_send_add_pipeline_with_serialized_pipeline(self):
         result, pool = run_in_parallel(send_pipeline)

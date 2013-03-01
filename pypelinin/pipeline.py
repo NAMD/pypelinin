@@ -1,11 +1,8 @@
 # coding: utf-8
 
 from itertools import product
+from textwrap import dedent
 from time import time
-
-from pygraph.classes.digraph import digraph as DiGraph
-from pygraph.algorithms.cycles import find_cycle
-from pygraph.readwrite.dot import write
 
 from . import Client
 
@@ -20,7 +17,10 @@ class Job(object):
 
     def __repr__(self):
         #TODO: change this when add `input`
-        return 'Job({})'.format(repr(self.worker_name))
+        data = ''
+        if self.data is not None:
+            data = ', data=...'
+        return '<Job worker={}{}>'.format(self.worker_name, data)
 
     def __eq__(self, other):
         #TODO: change this when add `input`
@@ -64,7 +64,13 @@ class Pipeline(object):
         self._check_types()
         self._define_jobs()
         self._define_starters()
-        self._create_digraph()
+        self._dependencies = {job: set() for job in self.jobs}
+        for job_1, job_2 in self._graph:
+            if job_2 is None:
+                continue
+            self._dependencies[job_2].add(job_1)
+        self.sent_jobs = set()
+
         if not self._validate():
             raise ValueError('The pipeline graph have cycles or do not have a '
                              'starter job')
@@ -72,13 +78,6 @@ class Pipeline(object):
             for job in self.jobs:
                 job.data = data
                 job.pipeline = self
-
-        self._dependencies = {job: set() for job in self.jobs}
-        for job_1, job_2 in self._graph:
-            if job_2 is None:
-                continue
-            self._dependencies[job_2].add(job_1)
-        self.sent_jobs = set()
 
     def __eq__(self, other):
         return self._graph == other._graph and self.data == other.data
@@ -88,6 +87,13 @@ class Pipeline(object):
 
     def __hash__(self):
         return hash(self.serialize())
+
+    def __repr__(self):
+        data = ''
+        if self.data is not None:
+            data = ', data=...'
+        jobs = ', '.join([job.worker_name for job in self.jobs])
+        return '<Pipeline: {}{}>'.format(jobs, data)
 
     def _normalize(self):
         new_graph = []
@@ -125,23 +131,66 @@ class Pipeline(object):
             possible_starters.add(key)
         self.starters = tuple(possible_starters - others)
 
-    def _create_digraph(self):
-        digraph = DiGraph()
-        digraph.add_nodes(self.jobs)
-        for edge in self._graph:
-            if edge[1] is not None:
-                digraph.add_edge(edge)
-        self._digraph = digraph
+    def has_cycle(self):
+        '''Verify if pipeline's graph has cycle
+
+        Code extracted from:
+            http://neopythonic.blogspot.com/2009/01/detecting-cycles-in-directed-graph.html
+        '''
+        ready = []
+        todo = set(self.jobs)
+        while todo:
+            node = todo.pop()
+            stack = [node]
+            while stack:
+                top = stack[-1]
+                # self._dependencies is a dict with key, value where each
+                # key is a certain job and the value is the job related
+                # to that job. In graph terms it represents all the
+                # precedent jobs to the key job.
+                # When dealing with cycle check, we can use them disregarding
+                # the correct direction of the edge.
+                for node in self._dependencies[top]:
+                    if node in stack:
+                        return stack[stack.index(node):]
+                    if node in todo:
+                        stack.append(node)
+                        todo.remove(node)
+                        break
+                else:
+                    node = stack.pop()
+                    ready.append(node)
+        return set(ready) < set(self.jobs)
 
     def _validate(self):
-        if len(self.starters) == 0:
-            return False
-        if find_cycle(self._digraph):
-            return False
-        return True
+        return len(self.starters) != 0 and not self.has_cycle()
 
-    def to_dot(self):
-        return write(self._digraph)
+    def __unicode__(self):
+        def represent(obj):
+            if type(obj) is Job:
+                return obj.worker_name
+            else:
+                return '(None)'
+        nodes = u';\n    '.join([u'"{}"'.format(job.worker_name) \
+                                 for job in self.jobs])
+        edges = u';\n    '.join([u'"{}" -> "{}"'.format(represent(job1),
+                                                        represent(job2)) \
+                                 for job1, job2 in self._graph])
+        return dedent(u'''
+        digraph graphname {{
+            {};
+
+            {};
+        }}''').strip().format(nodes, edges)
+
+    def __str__(self):
+        return unicode(self).encode('utf-8')
+
+    def save_dot(self, filename, encoding='utf-8'):
+        '''Save a dot file `filename` (used by graphviz) with Pipeline data
+        '''
+        with open(filename, 'w') as fp:
+            fp.write((unicode(self) + u'\n').encode(encoding))
 
     def serialize(self):
         result = []
@@ -214,6 +263,10 @@ class PipelineManager(Client):
         self.started_pipelines = 0
         self.finished_pipelines = 0
         self.connect(api=api, broadcast=broadcast)
+
+    def __repr__(self):
+        return '<PipelineManager: {} submitted, {} finished>'\
+                .format(self.started_pipelines, self.finished_pipelines)
 
     def start(self, pipeline):
         if pipeline.id is not None:

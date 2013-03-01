@@ -1,15 +1,19 @@
 pypelinin'
 ==========
 
-`pypelinin` is a python library to distribute jobs and pipelines among a
-cluster. It uses ZeroMQ as its foundation framework for communication between
-the daemons.
+`pypelinin` is a python library to distribute pipelines (collections of jobs)
+among a cluster. It uses ZeroMQ as its foundation framework for communication
+between the daemons.
+
+You need to provide code for the workers, the store (what will retrieve and
+save information to/from workers work), start the daemons in as many machines
+as you want and then submit pipelines to be processed.
 
 
 Architecture
 ------------
 
-We have 3 daemons you need to run:
+`pypelinin` has 3 daemons you need to run:
 
 - **Router**: the central point of communication of the network. When you need
   to execute a pipeline, all you have to do is ask the Router to add it, and
@@ -27,6 +31,10 @@ We have 3 daemons you need to run:
   will ask for job execution (to Router, that will be sent to Broker). You can
   run as many Pipeliners as you want (but one is enough to handle lots of
   pipelines simultaneously).
+
+A image is better than 1,000 words:
+
+![pypelinin's architecture](https://f.cloud.github.com/assets/186126/203314/51bbb686-8132-11e2-88df-3a455b71d89a.png)
 
 
 Installation
@@ -69,6 +77,7 @@ A pipeline is a
 ```python
 from pypelinin import Pipeline, Job, PipelineManager
 
+
 pipeline = Pipeline({Job('WorkerName1'): Job('WorkerName2'),
                      Job('WorkerName2'): Job('WorkerName3')},
                     data={'foo': 'bar'})
@@ -82,19 +91,55 @@ loaded on each `Broker`) when `Broker` needs to retrieve information from a
 data store to pass it to a worker execute or to save information returned by
 the worker.
 
+You can also generate a [DOT file]() from the pipeline object, so you can then
+plot it to represent the entire pipeline in a presentation or report:
+
+```python
+print str(pipeline)
+```
+
+And the result:
+
+```dot
+digraph graphname {
+    "WorkerName2";
+    "WorkerName3";
+    "WorkerName1";
+
+    "WorkerName2" -> "WorkerName3";
+    "WorkerName1" -> "WorkerName2";
+}
+```
+
+Or simply:
+
+```python
+pipeline.save_dot('filename.dot')
+```
+
+Then you can run [graphviz](http://graphviz.org/) to generate a PNG, for example:
+
+```bash
+dot -Tpng -omy_pipeline.png filename.dot
+```
+
+As soon the pipeline object is created, we need to connect to our `Router` and
+submit it to execution:
 
 ```python
 
 manager = PipelineManager(api='tcp://localhost:5555',
                           broadcast='tcp://localhost:5556')
 manager.start(pipeline) # send it to the cluster to execute
-while not manager.finished(pipeline): # wait for pipeline to finish
-    pass
+while not pipeline.finished: # wait for pipeline to finish
+    manager.update()
 print 'done'
 ```
 
 Note that you need to create a `StoreClass` and the workers (each one is a
-another class). These classes should be passed to a `Broker` when instantiated.
+another class). These classes should be passed to a `Broker` when instantiated
+(see more details below in the tutorial or in our
+[example](https://github.com/turicas/pypelinin/tree/develop/example)).
 
 
 Tutorial
