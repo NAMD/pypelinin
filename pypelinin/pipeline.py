@@ -144,6 +144,12 @@ class Pipeline(object):
             stack = [node]
             while stack:
                 top = stack[-1]
+                # self._dependencies is a dict with key, value where each
+                # key is a certain job and the value is the job related
+                # to that job. In graph terms it represents all the
+                # precedent jobs to the key job.
+                # When dealing with cycle check, we can use them disregarding
+                # the correct direction of the edge.
                 for node in self._dependencies[top]:
                     if node in stack:
                         return stack[stack.index(node):]
