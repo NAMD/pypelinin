@@ -1,11 +1,8 @@
 # coding: utf-8
 
 from itertools import product
+from textwrap import dedent
 from time import time
-
-from pygraph.classes.digraph import digraph as DiGraph
-from pygraph.algorithms.cycles import find_cycle
-from pygraph.readwrite.dot import write
 
 from . import Client
 
@@ -19,8 +16,11 @@ class Job(object):
         self.data = data
 
     def __repr__(self):
-       #TODO: change this when add `input`
-        return 'Job({})'.format(repr(self.worker_name))
+        #TODO: change this when add `input`
+        data = ''
+        if self.data is not None:
+            data = ', data=...'
+        return '<Job worker={}{}>'.format(self.worker_name, data)
 
     def __eq__(self, other):
         #TODO: change this when add `input`
@@ -55,7 +55,6 @@ class Job(object):
 
 class Pipeline(object):
     def __init__(self, pipeline, data=None):
-        #TODO: should raise if pipeline is not composed of `Job`s?
         self.data = data
         self.id = None
         self._finished_jobs = set()
@@ -65,7 +64,13 @@ class Pipeline(object):
         self._check_types()
         self._define_jobs()
         self._define_starters()
-        self._create_digraph()
+        self._dependencies = {job: set() for job in self.jobs}
+        for job_1, job_2 in self._graph:
+            if job_2 is None:
+                continue
+            self._dependencies[job_2].add(job_1)
+        self.sent_jobs = set()
+
         if not self._validate():
             raise ValueError('The pipeline graph have cycles or do not have a '
                              'starter job')
@@ -73,13 +78,6 @@ class Pipeline(object):
             for job in self.jobs:
                 job.data = data
                 job.pipeline = self
-
-        self._dependencies = {job: set() for job in self.jobs}
-        for job_1, job_2 in self._graph:
-            if job_2 is None:
-                continue
-            self._dependencies[job_2].add(job_1)
-        self.sent_jobs = set()
 
     def __eq__(self, other):
         return self._graph == other._graph and self.data == other.data
@@ -89,6 +87,13 @@ class Pipeline(object):
 
     def __hash__(self):
         return hash(self.serialize())
+
+    def __repr__(self):
+        data = ''
+        if self.data is not None:
+            data = ', data=...'
+        jobs = ', '.join([job.worker_name for job in self.jobs])
+        return '<Pipeline: {}{}>'.format(jobs, data)
 
     def _normalize(self):
         new_graph = []
@@ -126,24 +131,66 @@ class Pipeline(object):
             possible_starters.add(key)
         self.starters = tuple(possible_starters - others)
 
-    def _create_digraph(self):
-        digraph = DiGraph()
-        digraph.add_nodes(self.jobs)
-        for edge in self._graph:
-            if edge[1] is not None:
-                digraph.add_edge(edge)
-        self._digraph = digraph
+    def has_cycle(self):
+        '''Verify if pipeline's graph has cycle
+
+        Code extracted from:
+            http://neopythonic.blogspot.com/2009/01/detecting-cycles-in-directed-graph.html
+        '''
+        ready = []
+        todo = set(self.jobs)
+        while todo:
+            node = todo.pop()
+            stack = [node]
+            while stack:
+                top = stack[-1]
+                # self._dependencies is a dict with key, value where each
+                # key is a certain job and the value is the job related
+                # to that job. In graph terms it represents all the
+                # precedent jobs to the key job.
+                # When dealing with cycle check, we can use them disregarding
+                # the correct direction of the edge.
+                for node in self._dependencies[top]:
+                    if node in stack:
+                        return stack[stack.index(node):]
+                    if node in todo:
+                        stack.append(node)
+                        todo.remove(node)
+                        break
+                else:
+                    node = stack.pop()
+                    ready.append(node)
+        return set(ready) < set(self.jobs)
 
     def _validate(self):
-        #TODO: test A -> B, A -> C, B -> C
-        if len(self.starters) == 0:
-            return False
-        if find_cycle(self._digraph):
-            return False
-        return True
+        return len(self.starters) != 0 and not self.has_cycle()
 
-    def to_dot(self):
-        return write(self._digraph)
+    def __unicode__(self):
+        def represent(obj):
+            if type(obj) is Job:
+                return obj.worker_name
+            else:
+                return '(None)'
+        nodes = u';\n    '.join([u'"{}"'.format(job.worker_name) \
+                                 for job in self.jobs])
+        edges = u';\n    '.join([u'"{}" -> "{}"'.format(represent(job1),
+                                                        represent(job2)) \
+                                 for job1, job2 in self._graph])
+        return dedent(u'''
+        digraph graphname {{
+            {};
+
+            {};
+        }}''').strip().format(nodes, edges)
+
+    def __str__(self):
+        return unicode(self).encode('utf-8')
+
+    def save_dot(self, filename, encoding='utf-8'):
+        '''Save a dot file `filename` (used by graphviz) with Pipeline data
+        '''
+        with open(filename, 'w') as fp:
+            fp.write((unicode(self) + u'\n').encode(encoding))
 
     def serialize(self):
         result = []
@@ -212,27 +259,43 @@ class PipelineManager(Client):
     def __init__(self, api, broadcast, poll_time=50): # milliseconds
         super(PipelineManager, self).__init__()
         self.poll_time = poll_time
-        self._pipelines = []
-        self._pipeline_from_id = {}
+        self._pipelines = {}
+        self.started_pipelines = 0
+        self.finished_pipelines = 0
         self.connect(api=api, broadcast=broadcast)
 
+    def __repr__(self):
+        return '<PipelineManager: {} submitted, {} finished>'\
+                .format(self.started_pipelines, self.finished_pipelines)
+
     def start(self, pipeline):
-        if pipeline in self._pipelines:
+        if pipeline.id is not None:
             raise ValueError('This pipeline was already started')
-        self._pipelines.append(pipeline)
         request = {'command': 'add pipeline', 'pipeline': pipeline.serialize()}
         self.send_api_request(request)
         result = self.get_api_reply()
+        pipeline.started_at = time()
         pipeline_id = str(result['pipeline id'])
+        self.started_pipelines += 1
+        self.broadcast_subscribe('pipeline finished: id=' + pipeline_id)
         pipeline.id = pipeline_id
         pipeline.finished = False
-        self._pipeline_from_id[pipeline_id] = pipeline
-        pipeline.started_at = time()
-        self.broadcast_subscribe('pipeline finished: id=' + pipeline_id)
+        self._pipelines[pipeline_id] = pipeline
         return pipeline_id
 
-    def _update_broadcast(self):
-        while self.broadcast_poll(self.poll_time):
+    def update(self, timeout):
+        '''Verify if some pipelines have finished processing
+
+        If there is any pipeline finished, it'll update `PipelineManager`'s
+        `finished_pipelines` attribute and will set `finished` to `True` on
+        each finished `Pipeline` object.
+
+        You must provide `timeout`, the maximum time this method will hang
+        waiting for 'finished pipeline' messages from Router.
+        '''
+        start_time = time()
+        while self.broadcast_poll(self.poll_time) and \
+              time() - start_time < timeout:
             message = self.broadcast_receive()
             if message.startswith('pipeline finished: '):
                 try:
@@ -241,14 +304,24 @@ class PipelineManager(Client):
                     duration = float(data[1].split('=')[1])
                 except (IndexError, ValueError):
                     continue
-                pipeline = self._pipeline_from_id[pipeline_id]
+                try:
+                    pipeline = self._pipelines[pipeline_id]
+                except IndexError:
+                    continue
                 pipeline.duration = duration
                 pipeline.finished = True
-                self.broadcast_unsubscribe(message)
+                self.finished_pipelines += 1
+                self.broadcast_unsubscribe('pipeline finished: id=' + \
+                                           pipeline_id)
 
     def finished(self, pipeline):
-        if pipeline not in self._pipelines:
+        '''This method is deprecated. You should use `update` instead.'''
+        if pipeline.id is None or pipeline.id not in self._pipelines:
             raise ValueError('This pipeline is not being managed by this '
                              'PipelineMager')
-        self._update_broadcast()
+        self.update(self.poll_time * 10)
         return pipeline.finished
+
+    @property
+    def pipelines(self):
+        return self._pipelines.itervalues()

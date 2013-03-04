@@ -1,32 +1,40 @@
 pypelinin'
 ==========
 
-`pypelinin` is a python library to distribute jobs and pipelines among a
-cluster. It uses ZeroMQ as its foundation framework for communication between
-the daemons.
+`pypelinin` is a python library to distribute pipelines (collections of jobs)
+among a cluster. It uses ZeroMQ as its foundation framework for communication
+between the daemons.
+
+You need to provide code for the workers, the store (what will retrieve and
+save information to/from workers work), start the daemons in as many machines
+as you want and then submit pipelines to be processed.
 
 
 Architecture
 ------------
 
-We have 3 daemons you need to run:
+`pypelinin` has 3 daemons you need to run:
 
-- **Router**: it's the central point of communication of the network. Every
-  pipeline you need to execute should be asked to Router to add it and every
-  other daemon will communicate with Router to get a pipeline to execute and
-  other things. You can have only one Router running.
-- **Broker**: it run worker processes and execute jobs. It does not know about
-  an entire pipeline, it just receives a job to be executed, retrieve
-  needed information for that job, run the worker and then save information
-  returned by the worker. It uses a class defined by you (`StoreClass`) to
-  retrieve/save information. You should run as many Brokers as possible in your
-  cluster, to increase throughtput of job/pipeline execution.
-- **Pipeliner**: It take cares of pipelines. This daemon do not know how to
+- **Router**: the central point of communication of the network. When you need
+  to execute a pipeline, all you have to do is ask the Router to add it, and
+  every other daemon will communicate with the Router to get a pipeline for
+  execution. You can have only one Router running.
+- **Broker**: runs worker processes and executes jobs. It does not know about
+  an entire pipeline, it just receives a job to be executed, retrieves needed
+  information for that job, runs the worker and then saves information returned
+  by the worker. It uses a class defined by you (`StoreClass`) to retrieve/save
+  information. You should run as many Brokers as possible in your cluster, to
+  increase throughtput of job/pipeline execution.
+- **Pipeliner**: takes care of pipelines. This daemon do not know how to
   save/retrieve or even execute jobs, but it knows which job should be executed
   after another one in a pipeline. Router will give Pipeliner a pipeline and it
   will ask for job execution (to Router, that will be sent to Broker). You can
-  run as many Pipeliners you want (but just one can handle lots of pipelines
-  simultaneously).
+  run as many Pipeliners as you want (but one is enough to handle lots of
+  pipelines simultaneously).
+
+A image is better than 1,000 words:
+
+![pypelinin's architecture](https://f.cloud.github.com/assets/186126/203314/51bbb686-8132-11e2-88df-3a455b71d89a.png)
 
 
 Installation
@@ -48,7 +56,7 @@ Usage
 ### Daemons
 
 For each daemon, you need to create a script that instantiates the daemon class
-and start it. Please check our
+and starts it. Please check our
 [example](https://github.com/turicas/pypelinin/tree/develop/example)
 (files `example/my_router.py`, `example/my_broker.py` and
 `example/my_pipeliner.py`).
@@ -69,6 +77,7 @@ A pipeline is a
 ```python
 from pypelinin import Pipeline, Job, PipelineManager
 
+
 pipeline = Pipeline({Job('WorkerName1'): Job('WorkerName2'),
                      Job('WorkerName2'): Job('WorkerName3')},
                     data={'foo': 'bar'})
@@ -82,19 +91,55 @@ loaded on each `Broker`) when `Broker` needs to retrieve information from a
 data store to pass it to a worker execute or to save information returned by
 the worker.
 
+You can also generate a [DOT file]() from the pipeline object, so you can then
+plot it to represent the entire pipeline in a presentation or report:
+
+```python
+print str(pipeline)
+```
+
+And the result:
+
+```dot
+digraph graphname {
+    "WorkerName2";
+    "WorkerName3";
+    "WorkerName1";
+
+    "WorkerName2" -> "WorkerName3";
+    "WorkerName1" -> "WorkerName2";
+}
+```
+
+Or simply:
+
+```python
+pipeline.save_dot('filename.dot')
+```
+
+Then you can run [graphviz](http://graphviz.org/) to generate a PNG, for example:
+
+```bash
+dot -Tpng -omy_pipeline.png filename.dot
+```
+
+As soon the pipeline object is created, we need to connect to our `Router` and
+submit it to execution:
 
 ```python
 
 manager = PipelineManager(api='tcp://localhost:5555',
                           broadcast='tcp://localhost:5556')
 manager.start(pipeline) # send it to the cluster to execute
-while not manager.finished(pipeline): # wait for pipeline to finish
-    pass
+while not pipeline.finished: # wait for pipeline to finish
+    manager.update()
 print 'done'
 ```
 
 Note that you need to create a `StoreClass` and the workers (each one is a
-another class). These classes should be passed to a `Broker` when instantiated.
+another class). These classes should be passed to a `Broker` when instantiated
+(see more details below in the tutorial or in our
+[example](https://github.com/turicas/pypelinin/tree/develop/example)).
 
 
 Tutorial
@@ -170,3 +215,14 @@ Brokers on another machines. To do it, you need to:
 - Copy `my\_broker.py`, `file\_store.py` and `workers.py` to all
   "Broker machines";
 - Run everything!
+
+
+Related software
+----------------
+
+- [Resque](https://github.com/defunkt/resque)
+- [Powerhose](http://powerhose.readthedocs.org/)
+- [Circus](http://circus.readthedocs.org/)
+- [Sentry](http://pypi.python.org/pypi/sentry/)
+- [Celery](http://www.celeryproject.org/)
+- [Compmake](http://andreacensi.github.com/compmake/)

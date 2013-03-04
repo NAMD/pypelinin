@@ -26,7 +26,7 @@ sample_html = dedent('''
 class TestDownloader(unittest.TestCase):
     def test_download_local_file(self):
         filename = '/tmp/testing-worker-downloader'
-        worker_input = {'url': filename}
+        worker_input = {'url': 'file://' + filename}
         with open(filename, 'w') as fp:
             fp.write(sample_html)
         start_time = time.time()

@@ -4,14 +4,13 @@ from distutils.core import setup
 
 
 setup(name='pypelinin',
-      version='0.1.0',
+      version='0.1.1',
       author=u'Álvaro Justen',
       author_email='alvarojusten@gmail.com',
       url='https://github.com/turicas/pypelinin/',
       description='Easily distribute jobs and pipelines among a cluster',
       packages=['pypelinin'],
-      install_requires=['pyzmq', 'psutil', 'python-graph-core',
-                        'python-graph-dot'],
+      install_requires=['pyzmq', 'psutil'],
       license='LGPL',
       keywords=['jobs', 'tasks', 'distributed', 'pipelines', 'cluster'],
       classifiers=[

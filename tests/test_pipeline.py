@@ -2,15 +2,20 @@
 
 import unittest
 
-from textwrap import dedent
 from multiprocessing import Pool
-from uuid import uuid4
+from os import unlink
+from tempfile import NamedTemporaryFile
+from textwrap import dedent
 from time import sleep, time
+from uuid import uuid4
 
 import zmq
 
 from pypelinin import Job, Pipeline, PipelineManager, PipelineForPipeliner
 
+
+API_ADDRESS = 'tcp://127.0.0.1:5558'
+BROADCAST_ADDRESS = 'tcp://127.0.0.1:5559'
 
 class JobTest(unittest.TestCase):
     def test_worker_name(self):
@@ -20,7 +25,9 @@ class JobTest(unittest.TestCase):
         self.assertEqual(Job('ABC').data, None)
 
     def test_repr(self):
-        self.assertEqual(repr(Job('ABC')), "Job('ABC')")
+        self.assertEqual(repr(Job('ABC')), "<Job worker=ABC>")
+        self.assertEqual(repr(Job('ABC', data={'a': 'b'})),
+                         "<Job worker=ABC, data=...>")
 
     def test_equal_not_equal_and_hash(self):
         job_1 = Job('qwe')
@@ -56,6 +63,21 @@ class PipelineTest(unittest.TestCase):
     def test_only_accept_Job_objects(self):
         with self.assertRaises(ValueError):
             Pipeline({'test': 123})
+
+    def test_repr(self):
+        result = repr(Pipeline({Job('A'): Job('B'), Job('B'): Job('C')}))
+        expected_list = []
+        expected_list.append('<Pipeline: A, B, C>')
+        expected_list.append('<Pipeline: A, C, B>')
+        expected_list.append('<Pipeline: B, A, C>')
+        expected_list.append('<Pipeline: B, C, A>')
+        expected_list.append('<Pipeline: C, A, B>')
+        expected_list.append('<Pipeline: C, B, A>')
+        self.assertIn(result, expected_list)
+
+        result = repr(Pipeline({Job('A'): None}, data={'a': 'test'}))
+        expected = '<Pipeline: A, data=...>'
+        self.assertEqual(expected, result)
 
     def test_jobs(self):
         result = Pipeline({Job('A'): [Job('B')],
@@ -161,31 +183,55 @@ class PipelineTest(unittest.TestCase):
         #should not have cycles
         with self.assertRaises(ValueError):
             Pipeline({Job('A'): [Job('B')], Job('B'): [Job('C')],
-                      Job('C'): [Job('B')]})._graph
+                      Job('C'): [Job('B')]})
         with self.assertRaises(ValueError):
             Pipeline({Job('A'): [Job('B')], Job('B'): [Job('C')],
                       Job('C'): [Job('D')], Job('D'): [Job('B')]})
 
-    def test_dot(self):
-        result = Pipeline({(Job('A'), Job('B'), Job('C')): [Job('D')],
-                           Job('E'): (Job('B'), Job('F'))}).to_dot().strip()
+    def test_str_and_save_dot(self):
+        pipeline = Pipeline({Job('A'): Job('B'), Job('C'): None})
+        result = str(pipeline)
         expected = dedent('''
         digraph graphname {
-        "Job('A')";
-        "Job('C')";
-        "Job('B')";
-        "Job('E')";
-        "Job('D')";
-        "Job('F')";
-        "Job('A')" -> "Job('D')";
-        "Job('C')" -> "Job('D')";
-        "Job('B')" -> "Job('D')";
-        "Job('E')" -> "Job('B')";
-        "Job('E')" -> "Job('F')";
+            "A";
+            "C";
+            "B";
+
+            "A" -> "B";
+            "C" -> "(None)";
+        }
+        ''').strip()
+        self.assertEqual(result, expected)
+
+        pipeline = Pipeline({(Job('A'), Job('B'), Job('C')): [Job('D')],
+                             Job('E'): (Job('B'), Job('F'))})
+        result = str(pipeline)
+        expected = dedent('''
+        digraph graphname {
+            "A";
+            "C";
+            "B";
+            "E";
+            "D";
+            "F";
+
+            "A" -> "D";
+            "B" -> "D";
+            "C" -> "D";
+            "E" -> "B";
+            "E" -> "F";
         }
         ''').strip()
 
         self.assertEqual(result, expected)
+        temp_file = NamedTemporaryFile(delete=False)
+        temp_file.close()
+        pipeline.save_dot(temp_file.name)
+        temp_file = open(temp_file.name)
+        file_contents = temp_file.read()
+        temp_file.close()
+        self.assertEqual(expected + '\n', file_contents)
+        unlink(temp_file.name)
 
     def test_pipeline_should_propagate_data_among_jobs(self):
         job_1 = Job('w1')
@@ -429,34 +475,41 @@ def run_in_parallel(function, args=tuple()):
 def send_pipeline():
     pipeline = Pipeline({Job(u'worker_1'): Job(u'worker_2'),
                          Job(u'worker_2'): Job(u'worker_3')})
-    pipeline_manager = PipelineManager(api='tcp://localhost:5550',
-                                       broadcast='tcp://localhost:5551')
+    pipeline_manager = PipelineManager(api=API_ADDRESS,
+                                       broadcast=BROADCAST_ADDRESS)
     before = pipeline.id
     pipeline_id = pipeline_manager.start(pipeline)
     pipeline_manager.disconnect()
     return before, pipeline_id, pipeline.id
 
 def send_pipeline_and_wait_finished():
-    import time
-
-    pipeline = Pipeline({Job(u'worker_1'): Job(u'worker_2'),
-                         Job(u'worker_2'): Job(u'worker_3')})
-    pipeline_manager = PipelineManager(api='tcp://localhost:5550',
-                                       broadcast='tcp://localhost:5551')
-    pipeline_manager.start(pipeline)
-    start = time.time()
-    while not pipeline_manager.finished(pipeline):
-        time.sleep(0.1)
-    end = time.time()
+    pipeline_manager = PipelineManager(api=API_ADDRESS,
+                                       broadcast=BROADCAST_ADDRESS)
+    pipelines = []
+    for i in range(10):
+        pipeline = Pipeline({Job(u'worker_1'): Job(u'worker_2'),
+                             Job(u'worker_2'): Job(u'worker_3')},
+                            data={'index': i})
+        pipeline_manager.start(pipeline)
+        pipelines.append(pipeline)
+    assert pipeline_manager.started_pipelines == 10
+    assert pipeline_manager.finished_pipelines == 0
+    start = time()
+    pipeline_manager.finished(pipelines[0]) # only for testing this method
+    while pipeline_manager.finished_pipelines < pipeline_manager.started_pipelines:
+        pipeline_manager.update(0.5)
+    end = time()
     pipeline_manager.disconnect()
-    return {'duration': pipeline.duration, 'real_duration': end - start}
+    return {'duration': pipeline.duration, 'real_duration': end - start,
+            'finished_pipelines': pipeline_manager.finished_pipelines,
+            'started_pipelines': pipeline_manager.started_pipelines}
 
 def verify_PipelineManager_exceptions():
     pipeline_1 = Pipeline({Job(u'worker_1'): Job(u'worker_2'),
                            Job(u'worker_2'): Job(u'worker_3')})
     pipeline_2 = Pipeline({Job(u'worker_1'): Job(u'worker_2')})
-    pipeline_manager = PipelineManager(api='tcp://localhost:5550',
-                                       broadcast='tcp://localhost:5551')
+    pipeline_manager = PipelineManager(api=API_ADDRESS,
+                                       broadcast=BROADCAST_ADDRESS)
     pipeline_manager.start(pipeline_1)
     raise_1, raise_2 = False, False
     try:
@@ -486,12 +539,41 @@ class PipelineManagerTest(unittest.TestCase):
     def start_router_sockets(self):
         self.api = self.context.socket(zmq.REP)
         self.broadcast = self.context.socket(zmq.PUB)
-        self.api.bind('tcp://127.0.0.1:5550')
-        self.broadcast.bind('tcp://127.0.0.1:5551')
+        self.api.bind(API_ADDRESS)
+        self.broadcast.bind(BROADCAST_ADDRESS)
 
     def close_sockets(self):
         self.api.close()
         self.broadcast.close()
+
+    def test_repr(self):
+        pipeline_manager = PipelineManager(api=API_ADDRESS,
+                                           broadcast=BROADCAST_ADDRESS)
+        pipeline_ids = [uuid4().hex for i in range(10)]
+        pipeline_ids_copy = pipeline_ids[:]
+        pipeline_manager.send_api_request = lambda x: None
+        pipeline_manager.get_api_reply = \
+                lambda: {'pipeline id': pipeline_ids.pop()}
+        pipelines = [Pipeline({Job('A', data={'index': i}): Job('B')}) \
+                     for i in range(10)]
+        for pipeline in pipelines:
+            pipeline_manager.start(pipeline)
+
+        result = repr(pipeline_manager)
+        self.assertEqual(result, '<PipelineManager: 10 submitted, 0 finished>')
+
+        messages = ['pipeline finished: id={}, duration=0.1'.format(pipeline_id)
+                    for pipeline_id in pipeline_ids_copy[:3]]
+        poll = [False, True, True, True]
+        def new_poll(timeout):
+            return poll.pop()
+        def new_broadcast_receive():
+            return messages.pop()
+        pipeline_manager.broadcast_poll = new_poll
+        pipeline_manager.broadcast_receive = new_broadcast_receive
+        pipeline_manager.update(0.1)
+        result = repr(pipeline_manager)
+        self.assertEqual(result, '<PipelineManager: 10 submitted, 3 finished>')
 
     def test_should_send_add_pipeline_with_serialized_pipeline(self):
         result, pool = run_in_parallel(send_pipeline)
@@ -520,17 +602,23 @@ class PipelineManagerTest(unittest.TestCase):
 
     def test_should_subscribe_to_broadcast_to_wait_for_finished_pipeline(self):
         result, pool = run_in_parallel(send_pipeline_and_wait_finished)
-        message = self.api.recv_json()
-        pipeline_id = uuid4().hex
-        self.api.send_json({'answer': 'pipeline accepted',
-                            'pipeline id': pipeline_id})
+        pipeline_ids = []
+        for i in range(10):
+            message = self.api.recv_json()
+            pipeline_id = uuid4().hex
+            self.api.send_json({'answer': 'pipeline accepted',
+                                'pipeline id': pipeline_id})
+            pipeline_ids.append(pipeline_id)
         sleep(1)
-        self.broadcast.send('pipeline finished: id={}, duration=1.23456'\
-                            .format(pipeline_id))
+        for pipeline_id in pipeline_ids:
+            self.broadcast.send('pipeline finished: id={}, duration=1.23456'\
+                                .format(pipeline_id))
         received = result.get()
         pool.terminate()
         self.assertEqual(received['duration'], 1.23456)
         self.assertTrue(received['real_duration'] > 1)
+        self.assertTrue(received['finished_pipelines'], 10)
+        self.assertTrue(received['started_pipelines'], 10)
 
     def test_should_raise_ValueError_in_some_cases(self):
         result, pool = run_in_parallel(verify_PipelineManager_exceptions)
@@ -545,3 +633,18 @@ class PipelineManagerTest(unittest.TestCase):
         self.assertTrue(received['raise_2'])
         started_at = received['started_at']
         self.assertTrue(start_time - 0.1 <= started_at <= start_time + 0.1)
+
+    def test_should_return_all_pipelines(self):
+        pipeline_manager = PipelineManager(api=API_ADDRESS,
+                                           broadcast=BROADCAST_ADDRESS)
+        pipeline_manager.send_api_request = lambda x: None
+        pipeline_manager.get_api_reply = lambda: {'pipeline id': uuid4().hex}
+        iterations = 10
+        pipelines = []
+        for i in range(iterations):
+            pipeline = Pipeline({Job(u'worker_1'): Job(u'worker_2'),
+                                 Job(u'worker_2'): Job(u'worker_3')},
+                                data={'index': i})
+            pipeline_manager.start(pipeline)
+            pipelines.append(pipeline)
+        self.assertEqual(set(pipeline_manager.pipelines), set(pipelines))
