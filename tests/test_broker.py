@@ -3,16 +3,21 @@
 from __future__ import print_function
 import json
 import os
-import unittest
-import shlex
 import select
+import shlex
 import tempfile
-from signal import SIGINT, SIGKILL
-from time import sleep, time
-from subprocess import Popen, PIPE
+import unittest
+
+
 from multiprocessing import cpu_count
+from signal import SIGINT, SIGKILL
+from subprocess import Popen, PIPE
+from time import sleep, time
 from uuid import uuid4
+
+import psutil
 import zmq
+
 from psutil import Process, NoSuchProcess
 from utils import default_config
 
@@ -277,10 +282,7 @@ class TestBroker(unittest.TestCase):
         for key in needed_cpu_keys:
             self.assertIn(key, info['host']['cpu'])
 
-        needed_memory_keys = ['buffers', 'cached', 'free', 'free virtual',
-                              'percent', 'real free', 'real percent',
-                              'real used', 'total', 'total virtual', 'used',
-                              'used virtual']
+        needed_memory_keys = psutil.virtual_memory()._asdict().keys()
         for key in needed_memory_keys:
             self.assertIn(key, info['host']['memory'])
 
