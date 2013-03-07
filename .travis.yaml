@@ -1,0 +1,12 @@
+language:   python
+python:
+    - "2.7"
+before_install:
+    - "sudo apt-get update -qq"
+    - "sudo apt-get install -qq libzmq libzmq-dev build-essential"
+install:
+    - "pip install -r requirements/development.txt"
+script: "make test"
+notifications:
+    irc:
+        - "irc.freenode.net#pypelinin"
