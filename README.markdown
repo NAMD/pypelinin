@@ -46,6 +46,12 @@ it. On a Debian/Ubuntu machine, run:
 
     sudo aptitude install libzmq1 libzmq-dev build-essential
 
+
+or if you want to use the last version of libzmq, as available in Debian
+Experimental repository and Travis CI environment:
+
+    sudo aptitude install libzmq3 libzmq3-dev build-essential
+
 Then, install the Python package:
 
     pip install pypelinin
