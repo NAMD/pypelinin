@@ -6,6 +6,8 @@ before_install:
     - "sudo apt-get install -qq libzmq3 libzmq3-dev build-essential"
 install:
     - "pip install -r requirements/development.txt"
+    # Deal with issue on Travis builders re: multiprocessing.Queue :(
+    - "sudo rm -rf /dev/shm && sudo ln -s /run/shm /dev/shm"
 script: "make test"
 notifications:
     irc:
