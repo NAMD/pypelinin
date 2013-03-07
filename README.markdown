@@ -9,6 +9,7 @@ You need to provide code for the workers, the store (what will retrieve and
 save information to/from workers work), start the daemons in as many machines
 as you want and then submit pipelines to be processed.
 
+[![pypelinin's build status on travis-ci.org](https://travis-ci.org/NAMD/pypelinin.png)](https://travis-ci.org/NAMD/pypelinin)
 
 Architecture
 ------------
