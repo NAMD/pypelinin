@@ -44,7 +44,7 @@ Installation
 First you need to install `libzmq`, its headers and compilers needed to compile
 it. On a Debian/Ubuntu machine, run:
 
-    sudo aptitude install libzmq libzmq-dev build-essential
+    sudo aptitude install libzmq1 libzmq-dev build-essential
 
 Then, install the Python package:
 
