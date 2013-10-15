@@ -8,7 +8,7 @@ from time import sleep, time
 from signal import SIGKILL
 from . import Client
 from .monitoring import (get_host_info, get_outgoing_ip, get_process_info)
-
+from traceback import format_exc as traceback_format
 
 def worker_wrapper(pipe, workers_module_name):
     #TODO: should receive the document or database's configuration?
@@ -44,7 +44,8 @@ def worker_wrapper(pipe, workers_module_name):
                     try:
                         result = workers[worker_name].process(data)
                     except Exception as e:
-                        result = {'_error': True, '_exception': e}
+                        result = {'_error': True,
+                                  '_traceback': traceback_format(e)}
                         #TODO: handle this on broker
                     finally:
                         pipe.send(result)
@@ -216,8 +217,8 @@ class Broker(Client):
         except Exception as e:
             #TODO: what to do?
             self.logger.error('Could not save monitoring information into '
-                              'store with parameters: {}. Exception: {}'\
-                              .format(data, e))
+                              'store with parameters: {}. Traceback: {}'\
+                              .format(data, traceback_format(e)))
             return
         self.last_time_saved_monitoring_information = time()
         self.logger.info('Saved monitoring information')
@@ -250,8 +251,8 @@ class Broker(Client):
         except Exception as e:
             #TODO: what to do?
             self.logger.error('Could not retrieve data from store '
-                              'with parameters: {}. Exception: {}'\
-                              .format(info, e))
+                              'with parameters: {}. Traceback: {}'\
+                              .format(info, traceback_format(e)))
             return
         job_info = {'worker': worker,
                     'worker_input': worker_input,
@@ -328,8 +329,9 @@ class Broker(Client):
                     #TODO: what to do?
                     self.logger.error('Could not save data into store '
                                       'with parameters: '
-                                      '{}. Exception: {}'\
-                                      .format(job_information, e))
+                                      '{}. Traceback: {}'\
+                                      .format(job_information,
+                                       traceback_format(e)))
                     return
             except ValueError:
                 self.request({'command': 'job failed',
