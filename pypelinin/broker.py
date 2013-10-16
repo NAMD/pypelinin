@@ -4,11 +4,13 @@
 from importlib import import_module
 from multiprocessing import Process, Pipe, cpu_count
 from os import kill, getpid
-from time import sleep, time
 from signal import SIGKILL
+from time import sleep, time
+from traceback import format_exc as traceback_format
+
 from . import Client
 from .monitoring import (get_host_info, get_outgoing_ip, get_process_info)
-from traceback import format_exc as traceback_format
+
 
 def worker_wrapper(pipe, workers_module_name):
     #TODO: should receive the document or database's configuration?
@@ -44,9 +46,7 @@ def worker_wrapper(pipe, workers_module_name):
                     try:
                         result = workers[worker_name].process(data)
                     except Exception as e:
-                        result = {'_error': True,
-                                  '_traceback': traceback_format(e)}
-                        #TODO: handle this on broker
+                        result = {'_traceback': traceback_format(e)}
                     finally:
                         pipe.send(result)
         except KeyboardInterrupt:
@@ -217,12 +217,16 @@ class Broker(Client):
         except Exception as e:
             #TODO: what to do?
             self.logger.error('Could not save monitoring information into '
-                              'store with parameters: {}. Traceback: {}'\
-                              .format(data, traceback_format(e)))
+                              'store with parameters: {}. Traceback: '
+                              .format(data))
+            self.logger.error('-' * 40)
+            for line in traceback_format(e).split('\n'):
+                self.logger.error(line)
+            self.logger.error('-' * 40)
             return
         self.last_time_saved_monitoring_information = time()
         self.logger.info('Saved monitoring information')
-        self.logger.debug('  Information: {}'.format(data))
+        self.logger.debug('  Information saved: {}'.format(data))
 
     def start(self):
         try:
@@ -251,8 +255,12 @@ class Broker(Client):
         except Exception as e:
             #TODO: what to do?
             self.logger.error('Could not retrieve data from store '
-                              'with parameters: {}. Traceback: {}'\
-                              .format(info, traceback_format(e)))
+                              'with parameters: {}. Traceback:'\
+                              .format(info))
+            self.logger.error('-' * 40)
+            for line in traceback_format(e).split('\n'):
+                self.logger.error(line)
+            self.logger.error('-' * 40)
             return
         job_info = {'worker': worker,
                     'worker_input': worker_input,
@@ -260,11 +268,13 @@ class Broker(Client):
                     'job id': job_description['job id'],
                     'worker_requires': worker_requires,}
         self.worker_pool.start_job(job_info)
-        self.logger.debug('Started job: worker="{}", data="{}"'\
-                .format(worker, job_description['data']))
+        self.logger.info('Started job: id={}, worker={}'
+                         .format(job_info['job id'], job_info['worker']))
+        self.logger.debug('  Job data: {}'.format(job_info['data']))
 
     def get_a_job(self):
-        self.logger.debug('Available workers: {}'.format(self.worker_pool.available()))
+        self.logger.info('Available workers: {}'
+                         .format(self.worker_pool.available()))
         for i in range(self.worker_pool.available()):
             self.request({'command': 'get job'})
             message = self.get_reply()
@@ -273,12 +283,14 @@ class Broker(Client):
                 break # Don't have a job, stop asking
             elif 'worker' in message and 'data' in message:
                 if message['worker'] not in self.available_workers:
-                    self.logger.info('Ignoring job (inexistent worker): {}'.format(message))
+                    self.logger.warning('Ignoring job (inexistent worker): {}'
+                                        .format(message))
                     #TODO: send a 'rejecting job' request to router
                 else:
                     self.start_job(message)
             else:
-                self.logger.info('Ignoring malformed job: {}'.format(message))
+                self.logger.warning('Ignoring malformed job: {}'
+                                    .format(message))
                 #TODO: send a 'rejecting job' request to router
 
     def router_has_job(self):
@@ -310,8 +322,10 @@ class Broker(Client):
             result = worker.get_result()
             end_time = time()
             self.logger.info('Job finished: id={}, worker={}, '
-                             'data={}, start time={}, result={}'.format(job_id,
-                    worker_name, job_data, start_time, result))
+                             'start time={}'.format(job_id,
+                    worker_name, start_time))
+            self.logger.debug('job id={}, data={}, result={}'.format(job_id,
+                    job_data, result))
 
             job_information = {
                     'worker': worker_name,
@@ -319,6 +333,16 @@ class Broker(Client):
                     'worker_result': result,
                     'data': job_data,
             }
+
+            if '_traceback' in result:
+                self.logger.error('Exception raised on worker execution: '
+                                  'worker={}, job id={}'
+                                  .format(worker_name, job_id))
+                self.logger.error('-' * 40)
+                for line in result['_traceback'].split('\n'):
+                    self.logger.error(line)
+                self.logger.error('-' * 40)
+
             try:
                 #TODO: what if I want to the caller to receive job information
                 #      as a "return" from a function call? Should use a store?
@@ -329,9 +353,12 @@ class Broker(Client):
                     #TODO: what to do?
                     self.logger.error('Could not save data into store '
                                       'with parameters: '
-                                      '{}. Traceback: {}'\
-                                      .format(job_information,
-                                       traceback_format(e)))
+                                      '{}. Traceback:'\
+                                      .format(job_information))
+                    self.logger.error('-' * 40)
+                    for line in traceback_format(e).split('\n'):
+                        self.logger.error(line)
+                    self.logger.error('-' * 40)
                     return
             except ValueError:
                 self.request({'command': 'job failed',
